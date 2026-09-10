@@ -196,8 +196,8 @@ progress{
 <h1 id="titrePrincipal"></h1>
 
 <div class="note">
-  Formats acceptés : <strong>.docx, .pptx, .pdf, .xls, .xlsx, .txt, .md</strong><br>
-  Les PDF numérisés sont traités par OCR.
+  <span id="noteFormats"></span><br>
+  <span id="noteOCR"></span>
 </div>
 
 <div class="zone">
@@ -237,27 +237,25 @@ progress{
   </table>
 
   <div class="resume">
-    Fichiers sélectionnés : <span id="nbFichiers">0</span><br>
-    Taille estimée : <span id="tailleTotale">0</span> caractères
+    <span id="libelleNbFichiers"></span> <span id="nbFichiers">0</span><br>
+    <span id="libelleTaille"></span> <span id="tailleTotale">0</span> <span id="libelleCaracteres"></span>
   </div>
 
   <div class="options">
-    <label for="formatSortie">Format du fichier final :</label>
+    <label for="formatSortie" id="libelleFormat"></label>
     <select id="formatSortie">
-      <option value="md">Markdown (.md)</option>
-      <option value="txt">Texte brut (.txt)</option>
+      <option value="md" id="optionMd"></option>
+      <option value="txt" id="optionTxt"></option>
     </select>
 
     <br><br>
 
     <label>
       <input type="checkbox" id="nettoyageExcel" checked>
-      Nettoyer les éléments administratifs et décoratifs des fichiers Excel lors de la génération Markdown
+      <span id="libelleNettoyage"></span>
     </label>
 
-    <div style="font-size:13px;margin-top:7px;color:#444">
-      Exemples filtrés : légendes, instructions, traductions, versions, historiques de modifications et avertissements.
-    </div>
+    <div id="exemplesFiltres" style="font-size:13px;margin-top:7px;color:#444"></div>
   </div>
 
   <button id="generer"></button>
@@ -334,7 +332,42 @@ fr:{
   toutSelectionner:"Tout sélectionner",
   toutDeselectionner:"Tout désélectionner",
   retenus:"Fichiers retenus : ",
-  nonPris:" (format non pris en charge)"
+  nonPris:" (format non pris en charge)",
+
+  noteFormats:"Formats acceptés :",
+  noteOCR:"Les PDF numérisés sont traités par OCR.",
+  journalTitre:"Journal",
+  libelleFormat:"Format du fichier final :",
+  optionMd:"Markdown (.md)",
+  optionTxt:"Texte brut (.txt)",
+  libelleNettoyage:"Nettoyer les éléments administratifs et décoratifs des fichiers Excel lors de la génération Markdown",
+  exemplesFiltres:"Exemples filtrés : légendes, instructions, traductions, versions, historiques de modifications et avertissements.",
+  libelleNbFichiers:"Fichiers sélectionnés :",
+  libelleTaille:"Taille estimée :",
+  libelleCaracteres:"caractères",
+
+  corpusTitre:"Corpus documentaire concaténé",
+  corpusMetadonnees:"Métadonnées",
+  corpusType:"Type",
+  corpusTypeValeur:"Corpus multi-documents",
+  corpusDocumentsInclus:"Documents inclus",
+  corpusFormat:"Format",
+  corpusFormatValeur:"Markdown structuré",
+  corpusIndex:"Index des documents",
+  corpusColonneID:"ID",
+  corpusColonneDocument:"Document",
+  corpusFichierSource:"Fichier source",
+  corpusCheminSource:"Chemin source",
+  corpusContenu:"Contenu",
+
+  deuxPoints:" :",
+  diapositive:"DIAPOSITIVE",
+  notesDiapositive:"Notes de la diapositive {n} :",
+  notesSeules:"NOTES",
+  feuilleTitre:"Feuille",
+  feuilleMarqueur:"FEUILLE",
+  ligneListe:"Ligne {n}",
+  colonne:"Colonne {n}"
 },
 en:{
   titre:"Document Converter to Markdown or Text",
@@ -360,7 +393,42 @@ en:{
   toutSelectionner:"Select all",
   toutDeselectionner:"Deselect all",
   retenus:"Files selected: ",
-  nonPris:" (unsupported format)"
+  nonPris:" (unsupported format)",
+
+  noteFormats:"Accepted formats:",
+  noteOCR:"Scanned PDFs are processed with OCR.",
+  journalTitre:"Log",
+  libelleFormat:"Final file format:",
+  optionMd:"Markdown (.md)",
+  optionTxt:"Plain text (.txt)",
+  libelleNettoyage:"Remove administrative and decorative rows from Excel files when generating Markdown",
+  exemplesFiltres:"Filtered examples: legends, instructions, translations, versions, change histories and disclaimers.",
+  libelleNbFichiers:"Selected files:",
+  libelleTaille:"Estimated size:",
+  libelleCaracteres:"characters",
+
+  corpusTitre:"Concatenated document corpus",
+  corpusMetadonnees:"Metadata",
+  corpusType:"Type",
+  corpusTypeValeur:"Multi-document corpus",
+  corpusDocumentsInclus:"Documents included",
+  corpusFormat:"Format",
+  corpusFormatValeur:"Structured Markdown",
+  corpusIndex:"Document index",
+  corpusColonneID:"ID",
+  corpusColonneDocument:"Document",
+  corpusFichierSource:"Source file",
+  corpusCheminSource:"Source path",
+  corpusContenu:"Content",
+
+  deuxPoints:":",
+  diapositive:"SLIDE",
+  notesDiapositive:"Notes for slide {n}:",
+  notesSeules:"NOTES",
+  feuilleTitre:"Sheet",
+  feuilleMarqueur:"SHEET",
+  ligneListe:"Row {n}",
+  colonne:"Column {n}"
 }
 };
 
@@ -368,9 +436,30 @@ function t(cle){
   return T[langue][cle];
 }
 
+/* Remplace {n} dans une chaîne traduite. */
+function tn(cle,valeur){
+  return t(cle).replace("{n}",valeur);
+}
+
 function appliquerLangue(){
   document.documentElement.lang=langue;
+  document.title=t("titre");
   document.getElementById("titrePrincipal").textContent=t("titre");
+
+  // Les extensions ne sont pas traduisibles : seul le libellé l'est.
+  document.getElementById("noteFormats").innerHTML=
+    t("noteFormats")+" <strong>.docx, .pptx, .pdf, .xls, .xlsx, .txt, .md</strong>";
+
+  document.getElementById("noteOCR").textContent=t("noteOCR");
+  document.getElementById("titreJournal").textContent=t("journalTitre");
+  document.getElementById("libelleFormat").textContent=t("libelleFormat");
+  document.getElementById("optionMd").textContent=t("optionMd");
+  document.getElementById("optionTxt").textContent=t("optionTxt");
+  document.getElementById("libelleNettoyage").textContent=t("libelleNettoyage");
+  document.getElementById("exemplesFiltres").textContent=t("exemplesFiltres");
+  document.getElementById("libelleNbFichiers").textContent=t("libelleNbFichiers");
+  document.getElementById("libelleTaille").textContent=t("libelleTaille");
+  document.getElementById("libelleCaracteres").textContent=t("libelleCaracteres");
   boutonChoisir.textContent=t("choisir");
   boutonAnalyser.textContent=t("analyser");
   document.getElementById("titreSelection").textContent=t("selection");
@@ -393,6 +482,13 @@ function appliquerLangue(){
 document.getElementById("boutonLangue").onclick=function(){
   langue=(langue==="fr") ? "en" : "fr";
   appliquerLangue();
+
+  /*
+    Les marqueurs internes des classeurs et des présentations sont
+    traduits : le rendu, donc les tailles affichées, changent avec la
+    langue.
+  */
+  rafraichirTailles();
 };
 
 formatSortie.onchange=function(){
@@ -460,16 +556,24 @@ function estFichierGenere(nom){
 */
 function texteDe(resultat){
 
-  if(!resultat.feuilles) return resultat.texte;
+  if(!resultat.feuilles && !resultat.presentation) return resultat.texte;
 
-  const cle=formatSortie.value+"|"+nettoyageExcel.checked;
+  /*
+    La langue entre dans la clé : les marqueurs de feuille et de
+    diapositive sont traduits, donc un changement de langue invalide le
+    rendu mémorisé au même titre qu'un changement de format.
+  */
+  const cle=formatSortie.value+"|"+nettoyageExcel.checked+"|"+langue;
 
   if(resultat.cacheCle!==cle){
-    const rendu=classeurVersTexte(
-      resultat.feuilles,
-      formatSortie.value,
-      nettoyageExcel.checked
-    );
+
+    const rendu=resultat.feuilles
+      ? classeurVersTexte(
+          resultat.feuilles,
+          formatSortie.value,
+          nettoyageExcel.checked
+        )
+      : {texte:structurePPTXVersTexte(resultat.presentation),retirees:0};
 
     resultat.cacheCle=cle;
     resultat.cacheTexte=rendu.texte;
@@ -739,7 +843,7 @@ async function extraireTexteDOCX(fichier){
    PPTX
 ----------------------------------------------------------- */
 
-async function extraireTextePPTX(fichier){
+async function extraireStructurePPTX(fichier){
 
   const buffer=await fichier.arrayBuffer();
   const zip=await JSZip.loadAsync(buffer);
@@ -802,7 +906,8 @@ async function extraireTextePPTX(fichier){
     return extraireTextesDepuisXML(xml);
   }
 
-  let texte="";
+  const diapositives=[];
+  const notesOrphelines=[];
 
   for(let i=0;i<fichiersSlides.length;i++){
 
@@ -811,42 +916,78 @@ async function extraireTextePPTX(fichier){
 
     const textesSlide=await lireTextesXML(nomSlide);
 
-    if(textesSlide.length){
-      texte+="--- DIAPOSITIVE "+numeroSlide+" ---\n";
-      texte+=textesSlide.join("\n");
-      texte+="\n\n";
-    }
+    diapositives.push({
+      numero:numeroSlide,
+      textes:textesSlide,
+      notes:[]
+    });
 
     /*
       On tente de lire les notes du présentateur correspondant au même numéro.
       Cela fonctionne dans la majorité des fichiers .pptx simples.
     */
     const nomNote="ppt/notesSlides/notesSlide"+numeroSlide+".xml";
-    const textesNotes=await lireTextesXML(nomNote);
-
-    if(textesNotes.length){
-      texte+="Notes de la diapositive "+numeroSlide+" :\n";
-      texte+=textesNotes.join("\n");
-      texte+="\n\n";
-    }
+    diapositives[diapositives.length-1].notes=await lireTextesXML(nomNote);
   }
 
   /*
     Si aucune diapositive n’est trouvée, on tente quand même de récupérer
     toutes les notes disponibles.
   */
-  if(!texte.trim() && fichiersNotes.length){
+  const aucunTexte=diapositives.every(d=>!d.textes.length && !d.notes.length);
+
+  if(aucunTexte && fichiersNotes.length){
 
     for(let i=0;i<fichiersNotes.length;i++){
 
-      const textesNotes=await lireTextesXML(fichiersNotes[i]);
-
-      if(textesNotes.length){
-        texte+="--- NOTES "+(i+1)+" ---\n";
-        texte+=textesNotes.join("\n");
-        texte+="\n\n";
-      }
+      notesOrphelines.push({
+        numero:i+1,
+        textes:await lireTextesXML(fichiersNotes[i])
+      });
     }
+  }
+
+  return {diapositives,notesOrphelines};
+}
+
+/*
+  Rendu d'une présentation déjà analysée. Les marqueurs de diapositive
+  étant traduits, ce rendu dépend de la langue courante : il se fait donc
+  à l'affichage et à l'export, comme pour les classeurs.
+*/
+function structurePPTXVersTexte(presentation){
+
+  let texte="";
+
+  presentation.diapositives.forEach(diapositive=>{
+
+    if(diapositive.textes.length){
+      texte+="--- "+t("diapositive")+" "+diapositive.numero+" ---\n";
+      texte+=diapositive.textes.join("\n");
+      texte+="\n\n";
+    }
+
+    if(diapositive.notes.length){
+      texte+=tn("notesDiapositive",diapositive.numero)+"\n";
+      texte+=diapositive.notes.join("\n");
+      texte+="\n\n";
+    }
+  });
+
+  /*
+    Repli : si aucune diapositive n'a livré de texte, on rend les notes
+    trouvées isolément.
+  */
+  if(!texte.trim()){
+
+    presentation.notesOrphelines.forEach(note=>{
+
+      if(!note.textes.length) return;
+
+      texte+="--- "+t("notesSeules")+" "+note.numero+" ---\n";
+      texte+=note.textes.join("\n");
+      texte+="\n\n";
+    });
   }
 
   return nettoyerTexte(texte);
@@ -971,22 +1112,22 @@ function feuilleVersMarkdown(nomFeuille,lignes){
   // Si une feuille est très large, la représentation par listes est plus lisible.
   if(maxColonnes>12){
 
-    let sortie="### Feuille : "+nomFeuille+"\n\n";
+    let sortie="### "+t("feuilleTitre")+t("deuxPoints")+" "+nomFeuille+"\n\n";
 
     lignes.forEach((ligne,index)=>{
       const valeurs=ligne.filter(v=>v.trim()!=="");
 
       if(valeurs.length){
-        sortie+="**Ligne "+(index+1)+"** : "+valeurs.join(" — ")+"\n\n";
+        sortie+="**"+tn("ligneListe",index+1)+"**"+t("deuxPoints")+" "+valeurs.join(" — ")+"\n\n";
       }
     });
 
     return sortie;
   }
 
-  const entetes=lignes[0].map((v,i)=>v.trim()||("Colonne "+(i+1)));
+  const entetes=lignes[0].map((v,i)=>v.trim()||tn("colonne",i+1));
 
-  let sortie="### Feuille : "+nomFeuille+"\n\n";
+  let sortie="### "+t("feuilleTitre")+t("deuxPoints")+" "+nomFeuille+"\n\n";
   sortie+="| "+entetes.map(echapperMarkdown).join(" | ")+" |\n";
   sortie+="| "+entetes.map(()=>"---").join(" | ")+" |\n";
 
@@ -1038,7 +1179,7 @@ function classeurVersTexte(feuilles,format,nettoyer){
       return;
     }
 
-    texte+="--- FEUILLE : "+feuille.nom+" ---\n";
+    texte+="--- "+t("feuilleMarqueur")+t("deuxPoints")+" "+feuille.nom+" ---\n";
 
     resultat.lignes.forEach(ligne=>{
       texte+=ligne.join("\t")+"\n";
@@ -1066,8 +1207,12 @@ async function extraireFichier(fichier){
     return {texte:await extraireTexteDOCX(fichier)};
   }
 
+  /*
+    Comme les classeurs, les présentations conservent leur structure :
+    leurs marqueurs de diapositive sont traduits au rendu.
+  */
   if(ext==="pptx"){
-    return {texte:await extraireTextePPTX(fichier)};
+    return {presentation:await extraireStructurePPTX(fichier)};
   }
 
   /*
@@ -1167,7 +1312,8 @@ boutonAnalyser.onclick=async function(){
         nom:nomSimple(chemin),
         chemin:chemin,
         texte:resultat.texte||"",
-        feuilles:resultat.feuilles
+        feuilles:resultat.feuilles,
+        presentation:resultat.presentation
       };
 
       if(!texteDe(entree).trim()) continue;
@@ -1258,14 +1404,14 @@ boutonGenerer.onclick=function(){
 
   if(estMarkdown){
 
-    contenu+="# Corpus documentaire concaténé\n\n";
-    contenu+="## Métadonnées\n\n";
-    contenu+="- **Type :** Corpus multi-documents\n";
-    contenu+="- **Documents inclus :** "+documents.length+"\n";
-    contenu+="- **Format :** Markdown structuré\n\n";
+    contenu+="# "+t("corpusTitre")+"\n\n";
+    contenu+="## "+t("corpusMetadonnees")+"\n\n";
+    contenu+="- **"+t("corpusType")+t("deuxPoints")+"** "+t("corpusTypeValeur")+"\n";
+    contenu+="- **"+t("corpusDocumentsInclus")+t("deuxPoints")+"** "+documents.length+"\n";
+    contenu+="- **"+t("corpusFormat")+t("deuxPoints")+"** "+t("corpusFormatValeur")+"\n\n";
 
-    contenu+="## Index des documents\n\n";
-    contenu+="| ID | Document |\n";
+    contenu+="## "+t("corpusIndex")+"\n\n";
+    contenu+="| "+t("corpusColonneID")+" | "+t("corpusColonneDocument")+" |\n";
     contenu+="|---|---|\n";
 
     documents.forEach((document,index)=>{
@@ -1280,11 +1426,11 @@ boutonGenerer.onclick=function(){
       const id="D"+String(index+1).padStart(3,"0");
 
       contenu+="# ["+id+"] "+document.nom+"\n\n";
-      contenu+="## Métadonnées\n\n";
-      contenu+="- **ID :** "+id+"\n";
-      contenu+="- **Fichier source :** "+document.nom+"\n";
-      contenu+="- **Chemin source :** "+document.chemin+"\n\n";
-      contenu+="## Contenu\n\n";
+      contenu+="## "+t("corpusMetadonnees")+"\n\n";
+      contenu+="- **"+t("corpusColonneID")+t("deuxPoints")+"** "+id+"\n";
+      contenu+="- **"+t("corpusFichierSource")+t("deuxPoints")+"** "+document.nom+"\n";
+      contenu+="- **"+t("corpusCheminSource")+t("deuxPoints")+"** "+document.chemin+"\n\n";
+      contenu+="## "+t("corpusContenu")+"\n\n";
       contenu+=texteDe(document)+"\n\n";
       contenu+="---\n\n";
     });
