@@ -23,13 +23,13 @@ distribution model is the point of the tool -- anyone can copy the folder and ru
 
 ## Architecture
 
-`2-TXT-v5.html` -- 1342 lines, three parts:
+`2-TXT-v5.html` -- 1488 lines, three parts:
 
-- **lines 1-268** -- `<head>` (script tags + all CSS) and `<body>` markup.
-- **lines 270-1339** -- the entire application script.
+- **lines 1-266** -- `<head>` (script tags + all CSS) and `<body>` markup.
+- **lines 268-1485** -- the entire application script.
 - Everything is at top level in the global scope. No modules, no classes.
 
-### Global state (lines 272-292)
+### Global state (lines 270-290)
 
 | Variable | Purpose |
 |---|---|
@@ -43,8 +43,9 @@ distribution model is the point of the tool -- anyone can copy the folder and ru
 handler all rely on this. Do not sort or filter one without the other.
 
 **Entries do not all carry finished text.** A spreadsheet entry has `feuilles` (its
-parsed rows) and an empty `texte`; everything else has `texte` and no `feuilles`.
-Never read `.texte` directly -- go through `texteDe(entry)` (line 461), which renders
+parsed rows), a presentation entry has `presentation` (its parsed slides), and both
+leave `texte` empty; everything else carries `texte` alone.
+Never read `.texte` directly -- go through `texteDe(entry)` (line 557), which renders
 spreadsheets on demand from the current format and cleanup settings and memoises the
 result on the entry itself (`cacheCle` / `cacheTexte` / `cacheRetirees`). `tailleDe()`
 is the same thing for character counts. This is what keeps the export honest when the
@@ -54,18 +55,18 @@ user changes a control after analysing -- see known issue 2.
 
 | Lines | Section | Key symbols |
 |---|---|---|
-| 312-410 | i18n | `T` (fr/en string table), `t()`, `appliquerLangue()` |
-| 413-458 | Utilities | `log()`, `extensionDe()`, `nomSimple()`, `nettoyerTexte()`, `echapperMarkdown()`, `estFichierGenere()` |
-| 461-519 | Rendering state | `texteDe()`, `tailleDe()`, `mettreAJourResume()`, `rafraichirTailles()` |
-| 522-597 | Source selection | `entreesRetenues()`, `majCompteSelection()`, `rendreListeSource()`, `basculerSelection.onclick` |
-| 600-696 | PDF + OCR | `initialiserOCR()`, `augmenterContraste()`, `extraireTextePDF()` |
-| 699-735 | DOCX | `extraireTexteDOCX()` |
-| 742-849 | PPTX | `extraireTextePPTX()` |
-| 863-1054 | Excel | `motifsBruitExcel`, `estLigneBruitExcel()`, `valeurCelluleExcel()`, `lignesBrutesFeuille()`, `preparerLignes()`, `feuilleVersMarkdown()`, `analyserClasseur()`, `classeurVersTexte()` |
-| 1057-1102 | Dispatch | `extraireFichier(fichier)` -- extension switch |
-| 1105-1143 | Folder selection | `boutonChoisir.onclick`, `inputRepertoire` change handler |
-| 1146-1226 | Analysis run | `boutonAnalyser.onclick` -- the main loop |
-| 1229-1337 | Export | `boutonGenerer.onclick` -- builds and downloads the corpus |
+| 310-506 | i18n | `T` (fr/en string table), `t()`, `tn()`, `appliquerLangue()` |
+| 509-554 | Utilities | `log()`, `extensionDe()`, `nomSimple()`, `nettoyerTexte()`, `echapperMarkdown()`, `estFichierGenere()` |
+| 557-623 | Rendering state | `texteDe()`, `tailleDe()`, `mettreAJourResume()`, `rafraichirTailles()` |
+| 626-701 | Source selection | `entreesRetenues()`, `majCompteSelection()`, `rendreListeSource()`, `basculerSelection.onclick` |
+| 704-800 | PDF + OCR | `initialiserOCR()`, `augmenterContraste()`, `extraireTextePDF()` |
+| 803-839 | DOCX | `extraireTexteDOCX()` |
+| 846-1001 | PPTX | `extraireStructurePPTX()`, `structurePPTXVersTexte()` |
+| 1004-1195 | Excel | `motifsBruitExcel`, `estLigneBruitExcel()`, `valeurCelluleExcel()`, `lignesBrutesFeuille()`, `preparerLignes()`, `feuilleVersMarkdown()`, `analyserClasseur()`, `classeurVersTexte()` |
+| 1198-1247 | Dispatch | `extraireFichier(fichier)` -- extension switch |
+| 1250-1288 | Folder selection | `boutonChoisir.onclick`, `inputRepertoire` change handler |
+| 1291-1372 | Analysis run | `boutonAnalyser.onclick` -- the main loop |
+| 1375-1483 | Export | `boutonGenerer.onclick` -- builds and downloads the corpus |
 
 ### Data flow
 
@@ -84,9 +85,18 @@ folder picker -> fichiersSelectionnes (File[])
 - **The codebase is written in French.** Identifiers, comments, and log messages are
   all French (`fichier`, `texte`, `lignes`, `nettoyer`, `extraire...`). Keep new code
   in the same language -- mixing French and English identifiers would make it worse.
-- **User-facing strings go in `T` (line 312), never inline.** Both `fr` and `en` keys
-  must be added together, then wired through `appliquerLangue()` if the string lands
-  in static markup.
+- **Every user-visible string goes in `T` (line 310), never inline** -- and that
+  includes strings written *into the generated corpus*, not just the UI. Both `fr` and
+  `en` keys must be added together, then wired through `appliquerLangue()` if the
+  string lands in static markup.
+- Numbered strings use a `{n}` placeholder and `tn(cle, valeur)` rather than
+  concatenation, so word order can differ per language.
+- **Never hardcode `" : "`.** French puts a space before a colon and English does not;
+  use `t("deuxPoints")` between a label and its value.
+- The `.txt` envelope keys (`DATASET_TYPE`, `FILE_NAME`, `CONTENT_START`, ...) are
+  **not** translated. They are format tokens for machine parsing, like HTTP headers --
+  translating them would break any consumer. Only the Markdown corpus, which is prose,
+  follows the language.
 - Formatting style: no spaces around `=` or operators, 2-space indent, dense.
   Match it rather than reformatting.
 - French prose (comments, UI strings) uses **proper accents**. Do not strip them.
@@ -97,26 +107,31 @@ folder picker -> fichiersSelectionnes (File[])
 
 ## Per-format extraction notes
 
-**PDF** (`extraireTextePDF`, line 651)
+**PDF** (`extraireTextePDF`, line 755)
 Per page: pull the text layer; if it yields **fewer than 20 characters**, treat the
 page as scanned and OCR it. Text items are joined with `" "`, so intra-page line
 breaks are lost. OCR renders at scale `1.7` and binarises at grey threshold `165`
 (`augmenterContraste`). Both constants are hardcoded magic numbers.
 
-**DOCX** (`extraireTexteDOCX`, line 699)
+**DOCX** (`extraireTexteDOCX`, line 803)
 Reads only `word/document.xml`. Walks the DOM for `w:t` / `w:tab` / `w:br` / `w:cr`
 and appends `\n` after each `w:p`. Consequence: **tables are flattened** -- cell
 boundaries vanish. Headers, footers, footnotes, endnotes, and comments are not read.
 
-**PPTX** (`extraireTextePPTX`, line 742)
-Collects all `a:t` nodes per `ppt/slides/slideN.xml`, prefixed with
-`--- DIAPOSITIVE N ---`, then the matching `ppt/notesSlides/notesSlideN.xml`. The
-slide-to-notes mapping assumes index parity (`slideN` <-> `notesSlideN`), which holds
-for simple decks but is **not guaranteed** by OOXML -- the correct way is to follow
-the relationship files in `ppt/slides/_rels/`. Falls back to dumping all notes if no
-slide text was found.
+**PPTX** (line 846 onwards) -- **parsed once, rendered on demand**, same split as Excel.
 
-**Excel** (line 863 onwards) -- **parsed once, rendered on demand.**
+`extraireStructurePPTX()` collects all `a:t` nodes per `ppt/slides/slideN.xml` plus the
+matching `ppt/notesSlides/notesSlideN.xml`, returning
+`{diapositives:[{numero, textes, notes}], notesOrphelines}`. No marker text is produced
+here. `structurePPTXVersTexte()` renders `--- DIAPOSITIVE N ---` / `--- SLIDE N ---`
+and the notes heading at display and export time, because those markers are translated.
+Falls back to rendering orphan notes when no slide yielded text.
+
+The slide-to-notes mapping assumes index parity (`slideN` <-> `notesSlideN`), which
+holds for simple decks but is **not guaranteed** by OOXML -- the correct way is to
+follow the relationship files in `ppt/slides/_rels/`.
+
+**Excel** (line 1004 onwards) -- **parsed once, rendered on demand.**
 
 *Parse phase*, during analysis: `analyserClasseur()` reads the workbook and returns
 `[{nom, lignesBrutes}]` per sheet. `lignesBrutesFeuille()` walks the declared `!ref`
@@ -142,7 +157,7 @@ expanded. Charts, images, and comments are ignored.
 ## Known issues / gotchas
 
 1. **OCR is fully offline, and that constrains the OEM setting.** `initialiserOCR()`
-   (line 600) passes `workerPath`, `corePath:"."` and `langPath:"."`, so every OCR
+   (line 704) passes `workerPath`, `corePath:"."` and `langPath:"."`, so every OCR
    asset is served from the project folder and nothing touches the jsDelivr CDN.
    `corePath` is a **directory**, so Tesseract picks the build itself: with OEM `1`
    (`LSTM_ONLY`, passed to `createWorker`) it resolves `lstmOnly=true` and requests
@@ -158,10 +173,15 @@ expanded. Charts, images, and comments are ignored.
    `texteDe()` renders at display and export time from the *current* control values.
    Storing a rendered string during analysis (the previous behaviour) silently
    produced Markdown tables inside `.txt` corpora whenever the user changed the
-   dropdown after analysing. The memo key is `format|nettoyer`; if you add another
-   control that affects Excel output, it must go into that key too.
+   dropdown after analysing. The memo key is `format|nettoyer|langue` -- the language
+   is in there because sheet and slide markers are translated, so switching language
+   invalidates a cached render exactly as switching format does. Presentations ride
+   the same mechanism via `presentation`. If you add another control that affects
+   rendered output, it must go
+   into that key too, and the language toggle must keep calling `rafraichirTailles()`
+   so the displayed sizes follow.
 
-3. **`file://` does not work.** PDF.js sets `workerSrc` to a relative path (line 270)
+3. **`file://` does not work.** PDF.js sets `workerSrc` to a relative path (line 268)
    and Tesseract spawns a worker; both are blocked on `file://` origins. Must be
    served over HTTP.
 
@@ -172,7 +192,7 @@ expanded. Charts, images, and comments are ignored.
    created. Very large folders can exhaust the tab.
 
 6. **There are two selection stages, and they are not redundant.** The folder listing
-   (`rendreListeSource()`, line 547) ticks files *before* conversion, so unwanted files
+   (`rendreListeSource()`, line 651) ticks files *before* conversion, so unwanted files
    never cost an OCR pass. The results table then drops files *after* conversion, once
    their character counts are visible. Removing either one loses a real capability.
    `webkitdirectory` still takes a whole folder -- individual files cannot be picked
@@ -182,7 +202,7 @@ expanded. Charts, images, and comments are ignored.
    rebuilds the list on every language change, and fresh checkboxes would default back
    to ticked and silently discard the user's choice.
 
-7. **The `estFichierGenere()` guard** (line 442) is name-based only and matches any
+7. **The `estFichierGenere()` guard** (line 538) is name-based only and matches any
    filename containing `documents_concat` or `corpus_concat`.
 
 8. **The version number lives only in the filename** (`2-TXT-v5.html`). There is no
@@ -237,4 +257,4 @@ Ideas that fit the tool's shape, roughly in order of value:
 
 ---
 
-*Updated by Claude - 10-Sep-2026, 10:31 EDT*
+*Updated by Claude - 10-Sep-2026, 10:52 EDT*
