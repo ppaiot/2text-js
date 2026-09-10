@@ -1,0 +1,1089 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Convertisseur documentaire vers Markdown ou TXT</title>
+
+<script src="pdf.min.js"></script>
+<script src="jszip.min.js"></script>
+<script src="xlsx.full.min.js"></script>
+<script src="tesseract.min.js"></script>
+
+<style>
+body{
+  font-family:Arial,sans-serif;
+  max-width:1100px;
+  margin:40px auto;
+  padding:20px;
+  color:#222;
+}
+
+h1{color:#1f4e79;}
+
+.zone{
+  border:2px dashed #999;
+  border-radius:8px;
+  padding:25px;
+  background:#f7f7f7;
+  margin-bottom:20px;
+}
+
+button,.bouton3d{
+  background:linear-gradient(#4e7db0,#1f4e79);
+  border:1px solid #163a5c;
+  color:white;
+  padding:13px 24px;
+  font-size:16px;
+  border-radius:7px;
+  cursor:pointer;
+  margin-top:10px;
+  box-shadow:0 5px 0 #0e2c47,0 8px 14px rgba(0,0,0,.35);
+}
+
+button:active,.bouton3d:active{
+  transform:translateY(4px);
+  box-shadow:0 1px 0 #0e2c47,0 3px 6px rgba(0,0,0,.3);
+}
+
+button:disabled{
+  background:linear-gradient(#bbb,#888);
+  border-color:#777;
+  cursor:not-allowed;
+  box-shadow:0 4px 0 #666;
+}
+
+#barreLangue{text-align:right;margin-bottom:10px;}
+
+#journal{
+  white-space:pre-wrap;
+  background:#111;
+  color:#eee;
+  padding:15px;
+  border-radius:6px;
+  height:230px;
+  overflow-y:auto;
+  font-family:Consolas,monospace;
+  font-size:13px;
+}
+
+#listeSelection{
+  max-height:180px;
+  overflow:auto;
+  background:white;
+  border:1px solid #ccc;
+  border-radius:5px;
+  padding:10px;
+  margin-top:15px;
+  font-family:Consolas,monospace;
+  font-size:13px;
+}
+
+table{
+  width:100%;
+  border-collapse:collapse;
+  margin-top:20px;
+}
+
+th,td{
+  border-bottom:1px solid #ddd;
+  padding:8px;
+  font-size:14px;
+}
+
+th{background:#f0f0f0;}
+
+.taille{
+  text-align:right;
+  font-family:Consolas,monospace;
+}
+
+.resume{
+  margin-top:15px;
+  font-family:Consolas,monospace;
+}
+
+.note{
+  background:#fff3cd;
+  border-left:5px solid #ffc107;
+  padding:10px 15px;
+  margin-bottom:20px;
+}
+
+.options{
+  background:#eef5fb;
+  border-left:5px solid #1f4e79;
+  padding:12px 15px;
+  margin-top:18px;
+}
+
+label{font-weight:bold;}
+
+select{
+  padding:8px;
+  font-size:15px;
+  margin-left:8px;
+}
+
+progress{
+  width:100%;
+  height:18px;
+  margin-top:12px;
+}
+</style>
+</head>
+
+<body>
+
+<div id="barreLangue">
+  <button id="boutonLangue">English</button>
+</div>
+
+<h1 id="titrePrincipal"></h1>
+
+<div class="note">
+  Formats acceptés : <strong>.docx, .pptx, .pdf, .xls, .xlsx, .txt, .md</strong><br>
+  Les PDF numérisés sont traités par OCR.
+</div>
+
+<div class="zone">
+
+  <input type="file" id="repertoire" webkitdirectory directory multiple style="display:none">
+
+  <button id="choisirDossier"></button>
+
+  <br><br>
+
+  <button id="analyser" disabled></button>
+
+  <progress id="progressOCR" value="0" max="100"></progress>
+
+  <div id="listeSelection"></div>
+
+</div>
+
+<div id="listeFichiers" style="display:none">
+
+  <h2 id="titreSelection"></h2>
+
+  <table id="tableFichiers">
+    <thead>
+      <tr>
+        <th style="width:80px" id="thInclure"></th>
+        <th id="thFichier"></th>
+        <th style="width:120px;text-align:right" id="thTaille"></th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <div class="resume">
+    Fichiers sélectionnés : <span id="nbFichiers">0</span><br>
+    Taille estimée : <span id="tailleTotale">0</span> caractères
+  </div>
+
+  <div class="options">
+    <label for="formatSortie">Format du fichier final :</label>
+    <select id="formatSortie">
+      <option value="md">Markdown (.md)</option>
+      <option value="txt">Texte brut (.txt)</option>
+    </select>
+
+    <br><br>
+
+    <label>
+      <input type="checkbox" id="nettoyageExcel" checked>
+      Nettoyer les éléments administratifs et décoratifs des fichiers Excel lors de la génération Markdown
+    </label>
+
+    <div style="font-size:13px;margin-top:7px;color:#444">
+      Exemples filtrés : légendes, instructions, traductions, versions, historiques de modifications et avertissements.
+    </div>
+  </div>
+
+  <button id="generer"></button>
+
+</div>
+
+<h2 id="titreJournal">Journal</h2>
+<div id="journal"></div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc="pdf.worker.min.js";
+
+const inputRepertoire=document.getElementById("repertoire");
+const boutonChoisir=document.getElementById("choisirDossier");
+const boutonAnalyser=document.getElementById("analyser");
+const boutonGenerer=document.getElementById("generer");
+const formatSortie=document.getElementById("formatSortie");
+const nettoyageExcel=document.getElementById("nettoyageExcel");
+const journal=document.getElementById("journal");
+const tableBody=document.querySelector("#tableFichiers tbody");
+const progressOCR=document.getElementById("progressOCR");
+
+let langue="fr";
+let fichiersSelectionnes=[];
+let resultatsConversion=[];
+let ocrWorker=null;
+let ocrInitialise=false;
+
+/* -----------------------------------------------------------
+   LANGUE
+----------------------------------------------------------- */
+
+const T={
+fr:{
+  titre:"Convertisseur de documents vers Markdown ou texte",
+  choisir:"Choisir le dossier",
+  analyser:"Analyser et convertir les fichiers",
+  genererMD:"Générer le corpus Markdown",
+  genererTXT:"Générer le corpus texte",
+  selection:"Sélection des fichiers à inclure",
+  inclure:"Inclure",
+  fichier:"Fichier",
+  taille:"Taille",
+  aucun:"Aucun dossier sélectionné.",
+  charge:"Répertoire chargé",
+  detectes:"Fichiers détectés : ",
+  conversion:"Conversion : ",
+  erreur:"Erreur : ",
+  termine:"Analyse terminée.",
+  genere:"Fichier final généré.",
+  ocr:"Initialisation OCR...",
+  ocrPret:"OCR prêt.",
+  pdfOCR:"PDF graphique détecté, OCR : ",
+  nettoyage:"Lignes Excel administratives retirées : "
+},
+en:{
+  titre:"Document Converter to Markdown or Text",
+  choisir:"Choose folder",
+  analyser:"Analyze and convert files",
+  genererMD:"Generate Markdown corpus",
+  genererTXT:"Generate text corpus",
+  selection:"Select files to include",
+  inclure:"Include",
+  fichier:"File",
+  taille:"Size",
+  aucun:"No folder selected.",
+  charge:"Folder loaded",
+  detectes:"Files detected: ",
+  conversion:"Converting: ",
+  erreur:"Error: ",
+  termine:"Analysis complete.",
+  genere:"Final file generated.",
+  ocr:"Initializing OCR...",
+  ocrPret:"OCR ready.",
+  pdfOCR:"Image-based PDF detected, OCR: ",
+  nettoyage:"Administrative Excel rows removed: "
+}
+};
+
+function t(cle){
+  return T[langue][cle];
+}
+
+function appliquerLangue(){
+  document.documentElement.lang=langue;
+  document.getElementById("titrePrincipal").textContent=t("titre");
+  boutonChoisir.textContent=t("choisir");
+  boutonAnalyser.textContent=t("analyser");
+  document.getElementById("titreSelection").textContent=t("selection");
+  document.getElementById("thInclure").textContent=t("inclure");
+  document.getElementById("thFichier").textContent=t("fichier");
+  document.getElementById("thTaille").textContent=t("taille");
+
+  boutonGenerer.textContent=
+    formatSortie.value==="md" ? t("genererMD") : t("genererTXT");
+
+  if(!fichiersSelectionnes.length){
+    document.getElementById("listeSelection").textContent=t("aucun");
+  }
+}
+
+document.getElementById("boutonLangue").onclick=function(){
+  langue=(langue==="fr") ? "en" : "fr";
+  appliquerLangue();
+};
+
+formatSortie.onchange=function(){
+  boutonGenerer.textContent=
+    formatSortie.value==="md" ? t("genererMD") : t("genererTXT");
+};
+
+/* -----------------------------------------------------------
+   UTILITAIRES
+----------------------------------------------------------- */
+
+function log(message){
+  journal.textContent+="\n"+message;
+  journal.scrollTop=journal.scrollHeight;
+}
+
+function extensionDe(fichier){
+  const morceaux=fichier.name.split(".");
+  return morceaux.length>1 ? morceaux.pop().toLowerCase() : "";
+}
+
+function nomSimple(chemin){
+  return chemin.split("/").pop();
+}
+
+function nettoyerTexte(texte){
+  return String(texte||"")
+    .replace(/\r\n/g,"\n")
+    .replace(/[ \t]+\n/g,"\n")
+    .replace(/\n{4,}/g,"\n\n\n")
+    .trim();
+}
+
+function echapperMarkdown(texte){
+  return String(texte||"")
+    .replace(/\|/g,"\\|")
+    .replace(/\r?\n/g,"<br>")
+    .trim();
+}
+
+function estFichierGenere(nom){
+  const x=nom.toLowerCase();
+
+  return (
+    x==="documents_concat.txt" ||
+    x==="documents_concat.md" ||
+    x==="corpus_concatene.txt" ||
+    x==="corpus_concatene.md" ||
+    x.includes("documents_concat") ||
+    x.includes("corpus_concat")
+  );
+}
+
+function mettreAJourResume(){
+  let total=0;
+  let nb=0;
+
+  tableBody.querySelectorAll("tr").forEach((row,i)=>{
+    if(row.querySelector("input").checked){
+      total+=resultatsConversion[i].taille;
+      nb++;
+    }
+  });
+
+  document.getElementById("nbFichiers").textContent=nb;
+  document.getElementById("tailleTotale").textContent=total.toLocaleString();
+}
+
+/* -----------------------------------------------------------
+   OCR / PDF
+----------------------------------------------------------- */
+
+async function initialiserOCR(){
+
+  if(ocrInitialise) return;
+
+  log(t("ocr"));
+
+  ocrWorker=await Tesseract.createWorker("fra+eng",1,{
+    logger:m=>{
+      if(m.status==="recognizing text"){
+        progressOCR.value=Math.round((m.progress||0)*100);
+      }
+    }
+  });
+
+  ocrInitialise=true;
+  log(t("ocrPret"));
+}
+
+function augmenterContraste(canvas){
+  const ctx=canvas.getContext("2d");
+  const image=ctx.getImageData(0,0,canvas.width,canvas.height);
+  const d=image.data;
+
+  for(let i=0;i<d.length;i+=4){
+    const gris=(d[i]+d[i+1]+d[i+2])/3;
+    const v=gris>165 ? 255 : 0;
+    d[i]=v;
+    d[i+1]=v;
+    d[i+2]=v;
+  }
+
+  ctx.putImageData(image,0,0);
+}
+
+async function extraireTextePDF(fichier){
+
+  const buffer=await fichier.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data:buffer}).promise;
+  let texte="";
+
+  for(let pageNo=1;pageNo<=pdf.numPages;pageNo++){
+
+    const page=await pdf.getPage(pageNo);
+    const contenu=await page.getTextContent();
+    const textePage=contenu.items.map(x=>x.str).join(" ").trim();
+
+    if(textePage.length>20){
+      texte+=textePage+"\n\n";
+      continue;
+    }
+
+    log(t("pdfOCR")+fichier.name+" — page "+pageNo);
+
+    await initialiserOCR();
+
+    const viewport=page.getViewport({scale:1.7});
+    const canvas=document.createElement("canvas");
+    canvas.width=viewport.width;
+    canvas.height=viewport.height;
+
+    await page.render({
+      canvasContext:canvas.getContext("2d"),
+      viewport:viewport
+    }).promise;
+
+    augmenterContraste(canvas);
+
+    const resultat=await ocrWorker.recognize(canvas);
+    texte+=(resultat.data.text||"")+"\n\n";
+
+    canvas.width=0;
+    canvas.height=0;
+  }
+
+  progressOCR.value=0;
+  return nettoyerTexte(texte);
+}
+
+/* -----------------------------------------------------------
+   DOCX
+----------------------------------------------------------- */
+
+async function extraireTexteDOCX(fichier){
+
+  const buffer=await fichier.arrayBuffer();
+  const zip=await JSZip.loadAsync(buffer);
+  const entree=zip.file("word/document.xml");
+
+  if(!entree) return "";
+
+  const xml=await entree.async("text");
+  const doc=new DOMParser().parseFromString(xml,"application/xml");
+
+  let texte="";
+
+  function parcourir(noeud){
+    for(const enfant of noeud.childNodes){
+
+      if(enfant.nodeType!==1) continue;
+
+      if(enfant.nodeName==="w:t"){
+        texte+=enfant.textContent;
+      }else if(enfant.nodeName==="w:tab"){
+        texte+="\t";
+      }else if(enfant.nodeName==="w:br" || enfant.nodeName==="w:cr"){
+        texte+="\n";
+      }else{
+        parcourir(enfant);
+      }
+
+      if(enfant.nodeName==="w:p"){
+        texte+="\n";
+      }
+    }
+  }
+
+  parcourir(doc.documentElement);
+
+  return nettoyerTexte(texte);
+}
+
+/* -----------------------------------------------------------
+   PPTX
+----------------------------------------------------------- */
+
+async function extraireTextePPTX(fichier){
+
+  const buffer=await fichier.arrayBuffer();
+  const zip=await JSZip.loadAsync(buffer);
+
+  /*
+    Les fichiers .pptx sont des archives ZIP Office Open XML.
+    Le texte des diapositives est généralement dans :
+    ppt/slides/slide1.xml
+    ppt/slides/slide2.xml
+    etc.
+
+    Les notes du présentateur sont généralement dans :
+    ppt/notesSlides/notesSlide1.xml
+    ppt/notesSlides/notesSlide2.xml
+    etc.
+  */
+
+  const fichiersSlides=Object.keys(zip.files)
+    .filter(nom=>/^ppt\/slides\/slide\d+\.xml$/.test(nom))
+    .sort((a,b)=>{
+      const ma=a.match(/slide(\d+)\.xml$/);
+      const mb=b.match(/slide(\d+)\.xml$/);
+      const na=ma ? parseInt(ma[1],10) : 0;
+      const nb=mb ? parseInt(mb[1],10) : 0;
+      return na-nb;
+    });
+
+  const fichiersNotes=Object.keys(zip.files)
+    .filter(nom=>/^ppt\/notesSlides\/notesSlide\d+\.xml$/.test(nom))
+    .sort((a,b)=>{
+      const ma=a.match(/notesSlide(\d+)\.xml$/);
+      const mb=b.match(/notesSlide(\d+)\.xml$/);
+      const na=ma ? parseInt(ma[1],10) : 0;
+      const nb=mb ? parseInt(mb[1],10) : 0;
+      return na-nb;
+    });
+
+  function extraireTextesDepuisXML(xml){
+
+    const doc=new DOMParser().parseFromString(xml,"application/xml");
+
+    /*
+      Le texte PowerPoint est très souvent contenu dans des balises a:t.
+      Cette méthode extrait les titres, les zones de texte, les puces
+      et une partie du texte contenu dans les formes.
+    */
+    const textes=Array.from(doc.getElementsByTagName("a:t"))
+      .map(n=>String(n.textContent||"").trim())
+      .filter(Boolean);
+
+    return textes;
+  }
+
+  async function lireTextesXML(nomFichierXML){
+
+    const entree=zip.file(nomFichierXML);
+    if(!entree) return [];
+
+    const xml=await entree.async("text");
+    return extraireTextesDepuisXML(xml);
+  }
+
+  let texte="";
+
+  for(let i=0;i<fichiersSlides.length;i++){
+
+    const nomSlide=fichiersSlides[i];
+    const numeroSlide=i+1;
+
+    const textesSlide=await lireTextesXML(nomSlide);
+
+    if(textesSlide.length){
+      texte+="--- DIAPOSITIVE "+numeroSlide+" ---\n";
+      texte+=textesSlide.join("\n");
+      texte+="\n\n";
+    }
+
+    /*
+      On tente de lire les notes du présentateur correspondant au même numéro.
+      Cela fonctionne dans la majorité des fichiers .pptx simples.
+    */
+    const nomNote="ppt/notesSlides/notesSlide"+numeroSlide+".xml";
+    const textesNotes=await lireTextesXML(nomNote);
+
+    if(textesNotes.length){
+      texte+="Notes de la diapositive "+numeroSlide+" :\n";
+      texte+=textesNotes.join("\n");
+      texte+="\n\n";
+    }
+  }
+
+  /*
+    Si aucune diapositive n’est trouvée, on tente quand même de récupérer
+    toutes les notes disponibles.
+  */
+  if(!texte.trim() && fichiersNotes.length){
+
+    for(let i=0;i<fichiersNotes.length;i++){
+
+      const textesNotes=await lireTextesXML(fichiersNotes[i]);
+
+      if(textesNotes.length){
+        texte+="--- NOTES "+(i+1)+" ---\n";
+        texte+=textesNotes.join("\n");
+        texte+="\n\n";
+      }
+    }
+  }
+
+  return nettoyerTexte(texte);
+}
+
+/* -----------------------------------------------------------
+   EXCEL : NETTOYAGE ET MARKDOWN
+----------------------------------------------------------- */
+
+/*
+  Ces expressions visent les éléments manifestement administratifs.
+  Elles ne devraient pas retirer des données métier.
+*/
+const motifsBruitExcel=[
+  /^(légende|legend)\b/i,
+  /^(instructions?|instruction)\b/i,
+  /^(traduction|translation)\b/i,
+  /^(historique( des)? versions?|version history|change log|changelog)\b/i,
+  /^(révision|revision|version)\s*[:#]/i,
+  /^(mise à jour|updated?|last updated)\b/i,
+  /^(document owner|propriétaire du document)\b/i,
+  /^(confidentiel|confidential|internal use only)\b/i,
+  /^(note\s*:|notes\s*:|remarque\s*:)\s*(voir|see|à titre|for information)/i,
+  /^(veuillez|please)\s+(lire|read|remplir|complete|consulter|refer)/i,
+  /^(cliquez ici|click here)\b/i,
+  /^(n[’']?imprimez pas|do not print)\b/i
+];
+
+function estLigneBruitExcel(valeurs){
+
+  const texte=valeurs
+    .filter(v=>String(v).trim()!=="")
+    .join(" ")
+    .replace(/\s+/g," ")
+    .trim();
+
+  if(!texte) return true;
+
+  return motifsBruitExcel.some(motif=>motif.test(texte));
+}
+
+function valeurCelluleExcel(cellule){
+
+  if(!cellule) return "";
+
+  // .w correspond généralement au rendu texte visible dans Excel.
+  const valeur=cellule.w!==undefined ? cellule.w : cellule.v;
+
+  return String(valeur===undefined || valeur===null ? "" : valeur)
+    .replace(/\r?\n/g," ")
+    .replace(/\s+/g," ")
+    .trim();
+}
+
+function extraireFeuilleExcel(sheet,nettoyer){
+
+  if(!sheet["!ref"]){
+    return {lignes:[], retirees:0};
+  }
+
+  const plage=XLSX.utils.decode_range(sheet["!ref"]);
+  const lignesBrutes=[];
+
+  for(let r=plage.s.r;r<=plage.e.r;r++){
+    const ligne=[];
+
+    for(let c=plage.s.c;c<=plage.e.c;c++){
+      const adresse=XLSX.utils.encode_cell({r,c});
+      ligne.push(valeurCelluleExcel(sheet[adresse]));
+    }
+
+    lignesBrutes.push(ligne);
+  }
+
+  // Retrait des lignes vides.
+  let lignes=lignesBrutes.filter(ligne=>ligne.some(v=>v!==""));
+
+  let retirees=0;
+
+  if(nettoyer){
+    const avant=lignes.length;
+    lignes=lignes.filter(ligne=>!estLigneBruitExcel(ligne));
+    retirees=avant-lignes.length;
+  }
+
+  if(!lignes.length){
+    return {lignes:[], retirees};
+  }
+
+  // Ne conserve que les colonnes contenant au moins une valeur.
+  const nombreColonnes=Math.max(...lignes.map(l=>l.length));
+  const colonnesUtiles=[];
+
+  for(let c=0;c<nombreColonnes;c++){
+    if(lignes.some(ligne=>(ligne[c]||"").trim()!=="")){
+      colonnesUtiles.push(c);
+    }
+  }
+
+  lignes=lignes.map(ligne=>colonnesUtiles.map(c=>ligne[c]||""));
+
+  return {lignes,retirees};
+}
+
+function feuilleVersMarkdown(nomFeuille,lignes){
+
+  if(!lignes.length) return "";
+
+  const maxColonnes=Math.max(...lignes.map(l=>l.length));
+
+  // Si une feuille est très large, la représentation par listes est plus lisible.
+  if(maxColonnes>12){
+
+    let sortie="### Feuille : "+nomFeuille+"\n\n";
+
+    lignes.forEach((ligne,index)=>{
+      const valeurs=ligne.filter(v=>v.trim()!=="");
+
+      if(valeurs.length){
+        sortie+="**Ligne "+(index+1)+"** : "+valeurs.join(" — ")+"\n\n";
+      }
+    });
+
+    return sortie;
+  }
+
+  const entetes=lignes[0].map((v,i)=>v.trim()||("Colonne "+(i+1)));
+
+  let sortie="### Feuille : "+nomFeuille+"\n\n";
+  sortie+="| "+entetes.map(echapperMarkdown).join(" | ")+" |\n";
+  sortie+="| "+entetes.map(()=>"---").join(" | ")+" |\n";
+
+  const donnees=lignes.length>1 ? lignes.slice(1) : [];
+
+  donnees.forEach(ligne=>{
+    const cellules=entetes.map((_,i)=>echapperMarkdown(ligne[i]||""));
+    sortie+="| "+cellules.join(" | ")+" |\n";
+  });
+
+  sortie+="\n";
+
+  return sortie;
+}
+
+async function extraireExcelMarkdown(fichier,nettoyer){
+
+  const buffer=await fichier.arrayBuffer();
+  const workbook=XLSX.read(buffer,{type:"array"});
+  let texte="";
+  let totalRetirees=0;
+
+  workbook.SheetNames.forEach(nomFeuille=>{
+    const resultat=extraireFeuilleExcel(
+      workbook.Sheets[nomFeuille],
+      nettoyer
+    );
+
+    totalRetirees+=resultat.retirees;
+    texte+=feuilleVersMarkdown(nomFeuille,resultat.lignes);
+  });
+
+  if(totalRetirees>0){
+    log(t("nettoyage")+totalRetirees+" ("+fichier.name+")");
+  }
+
+  return nettoyerTexte(texte);
+}
+
+async function extraireExcelTexte(fichier){
+
+  const buffer=await fichier.arrayBuffer();
+  const workbook=XLSX.read(buffer,{type:"array"});
+  let texte="";
+
+  workbook.SheetNames.forEach(nomFeuille=>{
+    const resultat=extraireFeuilleExcel(
+      workbook.Sheets[nomFeuille],
+      false
+    );
+
+    if(!resultat.lignes.length) return;
+
+    texte+="--- FEUILLE : "+nomFeuille+" ---\n";
+
+    resultat.lignes.forEach(ligne=>{
+      texte+=ligne.join("\t")+"\n";
+    });
+
+    texte+="\n";
+  });
+
+  return nettoyerTexte(texte);
+}
+
+/* -----------------------------------------------------------
+   TRAITEMENT DES FICHIERS
+----------------------------------------------------------- */
+
+async function extraireFichier(fichier,format){
+
+  const ext=extensionDe(fichier);
+
+  if(ext==="pdf"){
+    return {
+      texte:await extraireTextePDF(fichier),
+      estExcel:false
+    };
+  }
+
+  if(ext==="docx"){
+    return {
+      texte:await extraireTexteDOCX(fichier),
+      estExcel:false
+    };
+  }
+
+  if(ext==="pptx"){
+    return {
+      texte:await extraireTextePPTX(fichier),
+      estExcel:false
+    };
+  }
+
+  if(ext==="xls" || ext==="xlsx"){
+    return {
+      texte:format==="md"
+        ? await extraireExcelMarkdown(fichier,nettoyageExcel.checked)
+        : await extraireExcelTexte(fichier),
+      estExcel:true
+    };
+  }
+
+  if(ext==="txt"){
+    return {
+      texte:nettoyerTexte(await fichier.text()),
+      estExcel:false
+    };
+  }
+
+  /*
+    Les fichiers Markdown sont volontairement conservés tels quels,
+    sauf normalisation des fins de ligne.
+  */
+  if(ext==="md"){
+    return {
+      texte:(await fichier.text())
+        .replace(/\r\n/g,"\n")
+        .trim(),
+      estExcel:false
+    };
+  }
+
+  return {texte:"",estExcel:false};
+}
+
+/* -----------------------------------------------------------
+   SÉLECTION DU DOSSIER
+----------------------------------------------------------- */
+
+boutonChoisir.onclick=()=>inputRepertoire.click();
+
+inputRepertoire.addEventListener("change",()=>{
+
+  fichiersSelectionnes=Array.from(inputRepertoire.files);
+  resultatsConversion=[];
+  tableBody.innerHTML="";
+  journal.textContent="";
+  document.getElementById("listeFichiers").style.display="none";
+
+  const liste=document.getElementById("listeSelection");
+  liste.innerHTML="";
+
+  if(!fichiersSelectionnes.length){
+    liste.textContent=t("aucun");
+    boutonAnalyser.disabled=true;
+    return;
+  }
+
+  fichiersSelectionnes.forEach(fichier=>{
+    const ligne=document.createElement("div");
+    ligne.textContent=fichier.webkitRelativePath||fichier.name;
+    liste.appendChild(ligne);
+  });
+
+  boutonAnalyser.disabled=false;
+
+  log(t("charge"));
+  log(t("detectes")+fichiersSelectionnes.length);
+});
+
+/* -----------------------------------------------------------
+   ANALYSE
+----------------------------------------------------------- */
+
+boutonAnalyser.onclick=async function(){
+
+  boutonAnalyser.disabled=true;
+  progressOCR.value=0;
+
+  const extensionsAcceptees=["pdf","docx","pptx","xls","xlsx","txt","md"];
+
+  const fichiers=fichiersSelectionnes.filter(fichier=>{
+    return (
+      extensionsAcceptees.includes(extensionDe(fichier)) &&
+      !estFichierGenere(fichier.name)
+    );
+  });
+
+  resultatsConversion=[];
+  tableBody.innerHTML="";
+
+  const formatActuel=formatSortie.value;
+
+  for(const fichier of fichiers){
+
+    const chemin=fichier.webkitRelativePath||fichier.name;
+    log(t("conversion")+chemin);
+
+    try{
+      const resultat=await extraireFichier(fichier,formatActuel);
+
+      if(!resultat.texte.trim()) continue;
+
+      resultatsConversion.push({
+        nom:nomSimple(chemin),
+        chemin:chemin,
+        texte:resultat.texte,
+        taille:resultat.texte.length
+      });
+
+    }catch(erreur){
+      log(t("erreur")+chemin);
+      log(String(erreur));
+    }
+  }
+
+  if(ocrWorker){
+    try{await ocrWorker.terminate();}catch(e){}
+    ocrWorker=null;
+    ocrInitialise=false;
+  }
+
+  resultatsConversion.sort((a,b)=>b.taille-a.taille);
+
+  resultatsConversion.forEach(fichier=>{
+
+    const tr=document.createElement("tr");
+
+    const tdInclure=document.createElement("td");
+    const checkbox=document.createElement("input");
+
+    checkbox.type="checkbox";
+    checkbox.checked=true;
+    checkbox.onchange=mettreAJourResume;
+
+    tdInclure.appendChild(checkbox);
+
+    const tdNom=document.createElement("td");
+    tdNom.textContent=fichier.nom;
+
+    const tdTaille=document.createElement("td");
+    tdTaille.className="taille";
+    tdTaille.textContent=fichier.taille.toLocaleString();
+
+    tr.appendChild(tdInclure);
+    tr.appendChild(tdNom);
+    tr.appendChild(tdTaille);
+
+    tableBody.appendChild(tr);
+  });
+
+  document.getElementById("listeFichiers").style.display="block";
+  mettreAJourResume();
+
+  boutonAnalyser.disabled=false;
+  log(t("termine"));
+};
+
+/* -----------------------------------------------------------
+   GÉNÉRATION DU FICHIER FINAL
+----------------------------------------------------------- */
+
+boutonGenerer.onclick=function(){
+
+  const estMarkdown=formatSortie.value==="md";
+  const lignes=tableBody.querySelectorAll("tr");
+
+  const documents=[];
+
+  lignes.forEach((ligne,index)=>{
+    if(!ligne.querySelector("input").checked) return;
+    documents.push(resultatsConversion[index]);
+  });
+
+  let contenu="";
+
+  if(estMarkdown){
+
+    contenu+="# Corpus documentaire concaténé\n\n";
+    contenu+="## Métadonnées\n\n";
+    contenu+="- **Type :** Corpus multi-documents\n";
+    contenu+="- **Documents inclus :** "+documents.length+"\n";
+    contenu+="- **Format :** Markdown structuré\n\n";
+
+    contenu+="## Index des documents\n\n";
+    contenu+="| ID | Document |\n";
+    contenu+="|---|---|\n";
+
+    documents.forEach((document,index)=>{
+      const id="D"+String(index+1).padStart(3,"0");
+      contenu+="| "+id+" | "+echapperMarkdown(document.nom)+" |\n";
+    });
+
+    contenu+="\n---\n\n";
+
+    documents.forEach((document,index)=>{
+
+      const id="D"+String(index+1).padStart(3,"0");
+
+      contenu+="# ["+id+"] "+document.nom+"\n\n";
+      contenu+="## Métadonnées\n\n";
+      contenu+="- **ID :** "+id+"\n";
+      contenu+="- **Fichier source :** "+document.nom+"\n";
+      contenu+="- **Chemin source :** "+document.chemin+"\n\n";
+      contenu+="## Contenu\n\n";
+      contenu+=document.texte+"\n\n";
+      contenu+="---\n\n";
+    });
+
+  }else{
+
+    contenu+="DATASET_TYPE: MULTI_DOCUMENT_TEXT\n";
+    contenu+="FORMAT_VERSION: 2\n";
+    contenu+="DOCUMENT_COUNT: "+documents.length+"\n\n";
+    contenu+="===== DOCUMENT INDEX =====\n";
+
+    documents.forEach((document,index)=>{
+      contenu+=(index+1)+" | "+document.nom+"\n";
+    });
+
+    contenu+="\n";
+
+    documents.forEach((document,index)=>{
+      contenu+="===== DOCUMENT START =====\n";
+      contenu+="FILE_INDEX: "+(index+1)+"\n";
+      contenu+="FILE_NAME: "+document.nom+"\n";
+      contenu+="FILE_PATH: "+document.chemin+"\n";
+      contenu+="CONTENT_START\n";
+      contenu+=document.texte+"\n";
+      contenu+="CONTENT_END\n";
+      contenu+="===== DOCUMENT END =====\n\n";
+    });
+  }
+
+  const extension=estMarkdown ? "md" : "txt";
+  const mime=estMarkdown
+    ? "text/markdown;charset=utf-8"
+    : "text/plain;charset=utf-8";
+
+  const blob=new Blob([contenu],{type:mime});
+  const url=URL.createObjectURL(blob);
+
+  const lien=document.createElement("a");
+  lien.href=url;
+  lien.download="corpus_concatene."+extension;
+
+  document.body.appendChild(lien);
+  lien.click();
+  document.body.removeChild(lien);
+
+  URL.revokeObjectURL(url);
+
+  log(t("genere"));
+};
+
+appliquerLangue();
+</script>
+
+</body>
+</html>

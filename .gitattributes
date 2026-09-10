@@ -1,0 +1,8 @@
+# Keep vendored minified libraries byte-identical across platforms
+*.min.js  -text -diff linguist-vendored
+*.wasm    binary
+tesseract-core.wasm.js  -text -diff linguist-vendored
+
+# Normalise line endings for everything we actually author
+*.html  text eol=lf
+*.md    text eol=lf

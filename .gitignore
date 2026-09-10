@@ -1,0 +1,29 @@
+# Generated corpus output -- never commit, may contain private document content
+corpus_concatene.*
+documents_concat.*
+*_concat.md
+*_concat.txt
+
+# Local test material -- keep real documents out of the public repo
+samples/
+test-docs/
+input/
+*.pdf
+*.docx
+*.pptx
+*.xls
+*.xlsx
+*.doc
+
+# Local tooling / editor
+.claude/
+.vscode/
+.idea/
+
+# OS cruft
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Node, if a toolchain is ever added
+node_modules/
