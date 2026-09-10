@@ -93,6 +93,46 @@ button:disabled{
   font-size:13px;
 }
 
+#listeSelection label{
+  display:block;
+  font-weight:normal;
+  cursor:pointer;
+  padding:1px 0;
+}
+
+#listeSelection label:hover{background:#eef5fb;}
+
+#listeSelection input{
+  margin-right:7px;
+  vertical-align:middle;
+}
+
+/* Fichiers listés mais non convertibles : visibles, jamais cochables. */
+#listeSelection .ignore{
+  color:#999;
+  font-style:italic;
+  padding:1px 0;
+}
+
+#barreSelection{
+  display:none;
+  align-items:center;
+  gap:14px;
+  margin-top:12px;
+}
+
+#barreSelection button{
+  margin-top:0;
+  padding:7px 14px;
+  font-size:14px;
+  box-shadow:0 3px 0 #0e2c47,0 5px 9px rgba(0,0,0,.3);
+}
+
+#compteSelection{
+  font-family:Consolas,monospace;
+  font-size:13px;
+}
+
 table{
   width:100%;
   border-collapse:collapse;
@@ -174,6 +214,11 @@ progress{
 
   <div id="listeSelection"></div>
 
+  <div id="barreSelection">
+    <button id="basculerSelection" type="button"></button>
+    <span id="compteSelection"></span>
+  </div>
+
 </div>
 
 <div id="listeFichiers" style="display:none">
@@ -234,9 +279,28 @@ const nettoyageExcel=document.getElementById("nettoyageExcel");
 const journal=document.getElementById("journal");
 const tableBody=document.querySelector("#tableFichiers tbody");
 const progressOCR=document.getElementById("progressOCR");
+const listeSelection=document.getElementById("listeSelection");
+const barreSelection=document.getElementById("barreSelection");
+const basculerSelection=document.getElementById("basculerSelection");
+const compteSelection=document.getElementById("compteSelection");
+
+const extensionsAcceptees=["pdf","docx","pptx","xls","xlsx","txt","md"];
 
 let langue="fr";
-let fichiersSelectionnes=[];
+
+/*
+  Une entrée par fichier du dossier :
+  {fichier, chemin, supporte, retenu, caseCocher}.
+
+  Les fichiers non convertibles restent listés, en grisé et sans case,
+  plutôt que d'être masqués : sinon l'utilisateur croit que son dossier
+  a été mal lu.
+
+  « retenu » porte la sélection, pas la case à cocher : la liste est
+  reconstruite à chaque changement de langue, et une case neuve
+  repartirait cochée en effaçant le choix de l'utilisateur.
+*/
+let entreesSource=[];
 let resultatsConversion=[];
 let ocrWorker=null;
 let ocrInitialise=false;
@@ -266,7 +330,11 @@ fr:{
   ocr:"Initialisation OCR...",
   ocrPret:"OCR prêt.",
   pdfOCR:"PDF graphique détecté, OCR : ",
-  nettoyage:"Lignes Excel administratives retirées : "
+  nettoyage:"Lignes Excel administratives retirées : ",
+  toutSelectionner:"Tout sélectionner",
+  toutDeselectionner:"Tout désélectionner",
+  retenus:"Fichiers retenus : ",
+  nonPris:" (format non pris en charge)"
 },
 en:{
   titre:"Document Converter to Markdown or Text",
@@ -288,7 +356,11 @@ en:{
   ocr:"Initializing OCR...",
   ocrPret:"OCR ready.",
   pdfOCR:"Image-based PDF detected, OCR: ",
-  nettoyage:"Administrative Excel rows removed: "
+  nettoyage:"Administrative Excel rows removed: ",
+  toutSelectionner:"Select all",
+  toutDeselectionner:"Deselect all",
+  retenus:"Files selected: ",
+  nonPris:" (unsupported format)"
 }
 };
 
@@ -309,9 +381,13 @@ function appliquerLangue(){
   boutonGenerer.textContent=
     formatSortie.value==="md" ? t("genererMD") : t("genererTXT");
 
-  if(!fichiersSelectionnes.length){
-    document.getElementById("listeSelection").textContent=t("aucun");
+  if(!entreesSource.length){
+    listeSelection.textContent=t("aucun");
+    return;
   }
+
+  // La liste source porte des libellés traduits : elle doit suivre.
+  rendreListeSource();
 }
 
 document.getElementById("boutonLangue").onclick=function(){
@@ -438,6 +514,84 @@ function rafraichirTailles(){
 
   mettreAJourResume();
 }
+
+/* -----------------------------------------------------------
+   SÉLECTION DES FICHIERS SOURCE
+----------------------------------------------------------- */
+
+function entreesRetenues(){
+  return entreesSource.filter(entree=>entree.supporte && entree.retenu);
+}
+
+function majCompteSelection(){
+
+  const convertibles=entreesSource.filter(entree=>entree.supporte);
+  const retenues=entreesRetenues();
+
+  compteSelection.textContent=
+    t("retenus")+retenues.length+" / "+convertibles.length;
+
+  basculerSelection.textContent=
+    retenues.length===convertibles.length
+      ? t("toutDeselectionner")
+      : t("toutSelectionner");
+
+  boutonAnalyser.disabled=(retenues.length===0);
+}
+
+/*
+  Construit la liste cochable du dossier choisi. Les cases sont posées
+  ici, avant toute conversion : c'est ce qui évite de payer l'OCR sur des
+  fichiers dont on ne veut pas.
+*/
+function rendreListeSource(){
+
+  listeSelection.innerHTML="";
+
+  entreesSource.forEach(entree=>{
+
+    if(!entree.supporte){
+      const ligne=document.createElement("div");
+      ligne.className="ignore";
+      ligne.textContent=entree.chemin+t("nonPris");
+      listeSelection.appendChild(ligne);
+      return;
+    }
+
+    const etiquette=document.createElement("label");
+
+    entree.caseCocher=document.createElement("input");
+    entree.caseCocher.type="checkbox";
+    entree.caseCocher.checked=entree.retenu;
+
+    entree.caseCocher.onchange=function(){
+      entree.retenu=entree.caseCocher.checked;
+      majCompteSelection();
+    };
+
+    etiquette.appendChild(entree.caseCocher);
+    etiquette.appendChild(document.createTextNode(entree.chemin));
+    listeSelection.appendChild(etiquette);
+  });
+
+  barreSelection.style.display=
+    entreesSource.some(entree=>entree.supporte) ? "flex" : "none";
+
+  majCompteSelection();
+}
+
+basculerSelection.onclick=function(){
+
+  const convertibles=entreesSource.filter(entree=>entree.supporte);
+  const toutCoche=entreesRetenues().length===convertibles.length;
+
+  convertibles.forEach(entree=>{
+    entree.retenu=!toutCoche;
+    entree.caseCocher.checked=entree.retenu;
+  });
+
+  majCompteSelection();
+};
 
 /* -----------------------------------------------------------
    OCR / PDF
@@ -952,31 +1106,37 @@ boutonChoisir.onclick=()=>inputRepertoire.click();
 
 inputRepertoire.addEventListener("change",()=>{
 
-  fichiersSelectionnes=Array.from(inputRepertoire.files);
   resultatsConversion=[];
   tableBody.innerHTML="";
   journal.textContent="";
   document.getElementById("listeFichiers").style.display="none";
 
-  const liste=document.getElementById("listeSelection");
-  liste.innerHTML="";
+  entreesSource=Array.from(inputRepertoire.files).map(fichier=>{
 
-  if(!fichiersSelectionnes.length){
-    liste.textContent=t("aucun");
+    const chemin=fichier.webkitRelativePath||fichier.name;
+
+    return {
+      fichier:fichier,
+      chemin:chemin,
+      supporte:
+        extensionsAcceptees.includes(extensionDe(fichier)) &&
+        !estFichierGenere(fichier.name),
+      retenu:true,
+      caseCocher:null
+    };
+  });
+
+  if(!entreesSource.length){
+    listeSelection.textContent=t("aucun");
+    barreSelection.style.display="none";
     boutonAnalyser.disabled=true;
     return;
   }
 
-  fichiersSelectionnes.forEach(fichier=>{
-    const ligne=document.createElement("div");
-    ligne.textContent=fichier.webkitRelativePath||fichier.name;
-    liste.appendChild(ligne);
-  });
-
-  boutonAnalyser.disabled=false;
+  rendreListeSource();
 
   log(t("charge"));
-  log(t("detectes")+fichiersSelectionnes.length);
+  log(t("detectes")+entreesSource.filter(entree=>entree.supporte).length);
 });
 
 /* -----------------------------------------------------------
@@ -988,21 +1148,16 @@ boutonAnalyser.onclick=async function(){
   boutonAnalyser.disabled=true;
   progressOCR.value=0;
 
-  const extensionsAcceptees=["pdf","docx","pptx","xls","xlsx","txt","md"];
-
-  const fichiers=fichiersSelectionnes.filter(fichier=>{
-    return (
-      extensionsAcceptees.includes(extensionDe(fichier)) &&
-      !estFichierGenere(fichier.name)
-    );
-  });
+  // Seuls les fichiers cochés sont convertis.
+  const entrees=entreesRetenues();
 
   resultatsConversion=[];
   tableBody.innerHTML="";
 
-  for(const fichier of fichiers){
+  for(const entree of entrees){
 
-    const chemin=fichier.webkitRelativePath||fichier.name;
+    const fichier=entree.fichier;
+    const chemin=entree.chemin;
     log(t("conversion")+chemin);
 
     try{
@@ -1063,7 +1218,7 @@ boutonAnalyser.onclick=async function(){
   document.getElementById("listeFichiers").style.display="block";
   mettreAJourResume();
 
-  boutonAnalyser.disabled=false;
+  majCompteSelection();
   log(t("termine"));
 };
 
