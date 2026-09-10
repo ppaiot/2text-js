@@ -8,3 +8,8 @@ tesseract-core-*.wasm.js -text -diff linguist-vendored
 # Normalise line endings for everything we actually author
 *.html  text eol=lf
 *.md    text eol=lf
+
+# Must stay LF. Checked out with CRLF, every filename in the manifest gains a
+# trailing carriage return and `sha256sum -c vendor-manifest.sha256` fails to
+# find any of the files -- which looks alarmingly like tampering.
+*.sha256  text eol=lf
