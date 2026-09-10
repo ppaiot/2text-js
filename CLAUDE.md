@@ -23,10 +23,10 @@ distribution model is the point of the tool -- anyone can copy the folder and ru
 
 ## Architecture
 
-`2-TXT-v5.html` -- 1089 lines, three parts:
+`2-TXT-v5.html` -- 1106 lines, three parts:
 
 - **lines 1-208** -- `<head>` (script tags + all CSS) and `<body>` markup.
-- **lines 210-1086** -- the entire application script.
+- **lines 210-1103** -- the entire application script.
 - Everything is at top level in the global scope. No modules, no classes.
 
 ### Global state (lines 212-229)
@@ -48,14 +48,14 @@ this. Do not sort or filter one without the other.
 |---|---|---|
 | 233-311 | i18n | `T` (fr/en string table), `t()`, `appliquerLangue()` |
 | 316-374 | Utilities | `log()`, `extensionDe()`, `nomSimple()`, `nettoyerTexte()`, `echapperMarkdown()`, `estFichierGenere()`, `mettreAJourResume()` |
-| 377-456 | PDF + OCR | `initialiserOCR()`, `augmenterContraste()`, `extraireTextePDF()` |
-| 459-495 | DOCX | `extraireTexteDOCX()` |
-| 502-609 | PPTX | `extraireTextePPTX()` |
-| 623-800 | Excel | `motifsBruitExcel`, `estLigneBruitExcel()`, `valeurCelluleExcel()`, `extraireFeuilleExcel()`, `feuilleVersMarkdown()`, `extraireExcelMarkdown()`, `extraireExcelTexte()` |
-| 808-865 | Dispatch | `extraireFichier(fichier, format)` -- extension switch |
-| 869-901 | Folder selection | `boutonChoisir.onclick`, `inputRepertoire` change handler |
-| 904-989 | Analysis run | `boutonAnalyser.onclick` -- the main loop |
-| 992-1084 | Export | `boutonGenerer.onclick` -- builds and downloads the corpus |
+| 377-473 | PDF + OCR | `initialiserOCR()`, `augmenterContraste()`, `extraireTextePDF()` |
+| 476-512 | DOCX | `extraireTexteDOCX()` |
+| 519-626 | PPTX | `extraireTextePPTX()` |
+| 640-817 | Excel | `motifsBruitExcel`, `estLigneBruitExcel()`, `valeurCelluleExcel()`, `extraireFeuilleExcel()`, `feuilleVersMarkdown()`, `extraireExcelMarkdown()`, `extraireExcelTexte()` |
+| 825-882 | Dispatch | `extraireFichier(fichier, format)` -- extension switch |
+| 886-918 | Folder selection | `boutonChoisir.onclick`, `inputRepertoire` change handler |
+| 921-1006 | Analysis run | `boutonAnalyser.onclick` -- the main loop |
+| 1009-1101 | Export | `boutonGenerer.onclick` -- builds and downloads the corpus |
 
 ### Data flow
 
@@ -87,18 +87,18 @@ folder picker -> fichiersSelectionnes (File[])
 
 ## Per-format extraction notes
 
-**PDF** (`extraireTextePDF`, line 411)
+**PDF** (`extraireTextePDF`, line 428)
 Per page: pull the text layer; if it yields **fewer than 20 characters**, treat the
 page as scanned and OCR it. Text items are joined with `" "`, so intra-page line
 breaks are lost. OCR renders at scale `1.7` and binarises at grey threshold `165`
 (`augmenterContraste`). Both constants are hardcoded magic numbers.
 
-**DOCX** (`extraireTexteDOCX`, line 459)
+**DOCX** (`extraireTexteDOCX`, line 476)
 Reads only `word/document.xml`. Walks the DOM for `w:t` / `w:tab` / `w:br` / `w:cr`
 and appends `\n` after each `w:p`. Consequence: **tables are flattened** -- cell
 boundaries vanish. Headers, footers, footnotes, endnotes, and comments are not read.
 
-**PPTX** (`extraireTextePPTX`, line 502)
+**PPTX** (`extraireTextePPTX`, line 519)
 Collects all `a:t` nodes per `ppt/slides/slideN.xml`, prefixed with
 `--- DIAPOSITIVE N ---`, then the matching `ppt/notesSlides/notesSlideN.xml`. The
 slide-to-notes mapping assumes index parity (`slideN` <-> `notesSlideN`), which holds
@@ -106,7 +106,7 @@ for simple decks but is **not guaranteed** by OOXML -- the correct way is to fol
 the relationship files in `ppt/slides/_rels/`. Falls back to dumping all notes if no
 slide text was found.
 
-**Excel** (line 623 onwards)
+**Excel** (line 640 onwards)
 `extraireFeuilleExcel()` reads the declared `!ref` range cell by cell, preferring
 `cell.w` (formatted display text) over `cell.v` (raw value). Drops empty rows, then
 optionally noise rows, then fully empty columns.
@@ -119,16 +119,20 @@ not expanded. Charts, images, and comments are ignored.
 
 ## Known issues / gotchas
 
-1. **The vendored Tesseract runtime is not actually used.** `tesseract.worker.min.js`,
-   `tesseract-core.wasm`, and `tesseract-core.wasm.js` sit in the folder, but
-   `initialiserOCR()` (line 377) never passes `workerPath` / `corePath` / `langPath`,
-   so Tesseract.js 5.1.1 falls back to its jsDelivr CDN defaults. OCR therefore needs
-   an internet connection. To make it offline, pass all three paths plus the
-   `fra.traineddata.gz` / `eng.traineddata.gz` files (which are **not** in the repo).
+1. **OCR is fully offline, and that constrains the OEM setting.** `initialiserOCR()`
+   (line 377) passes `workerPath`, `corePath:"."` and `langPath:"."`, so every OCR
+   asset is served from the project folder and nothing touches the jsDelivr CDN.
+   `corePath` is a **directory**, so Tesseract picks the build itself: with OEM `1`
+   (`LSTM_ONLY`, passed to `createWorker`) it resolves `lstmOnly=true` and requests
+   `tesseract-core-simd-lstm.wasm.js`, falling back to `tesseract-core-lstm.wasm.js`
+   without SIMD. **Only those two builds are vendored.** Changing the OEM argument to
+   `0` or `2` would make it request `tesseract-core-simd.wasm.js` /
+   `tesseract-core.wasm.js`, which are not in the repo -- OCR would 404 and hang. If
+   you ever need the legacy engine, vendor those two files as well.
 
 2. **Output format is captured at analysis time, not export time.** Excel files are
    the only format whose extraction depends on `formatSortie` (Markdown tables vs.
-   tab-separated). `boutonAnalyser.onclick` snapshots `formatSortie.value` at line 918.
+   tab-separated). `boutonAnalyser.onclick` snapshots `formatSortie.value` at line 935.
    If the user analyses as Markdown, then switches the dropdown to text and exports,
    the Excel sections stay in Markdown. Re-analysis is required and nothing tells the
    user that.
@@ -157,7 +161,7 @@ not expanded. Charts, images, and comments are ignored.
    dark text becomes unreadable. Fix by setting an explicit `background:#fff` on
    `body`, or by adding a real dark-theme palette.
 
-10. **The Excel noise filter is Markdown-only.** `extraireFichier()` (line 808) only
+10. **The Excel noise filter is Markdown-only.** `extraireFichier()` (line 825) only
     passes `nettoyageExcel.checked` on the Markdown branch; the text branch calls
     `extraireExcelTexte()`, which hardcodes `nettoyer=false`. The checkbox silently
     does nothing when the output format is text.
@@ -168,7 +172,6 @@ not expanded. Charts, images, and comments are ignored.
 
 Ideas that fit the tool's shape, roughly in order of value:
 
-- Wire up the local Tesseract worker/core/lang paths so OCR works offline (issue 1).
 - Re-extract Excel files on format change, or warn the user (issue 2).
 - Add a version constant and surface it in the UI and the generated corpus header.
 - Per-document token estimate alongside the character count.
@@ -190,7 +193,13 @@ Ideas that fit the tool's shape, roughly in order of value:
   local absolute paths, credentials, or client names. Test fixtures must be synthetic.
 - Verify changes by serving the folder over HTTP and exercising the real UI; there is
   no test suite to lean on.
+- **Automated/headless verification gotcha:** PDF.js schedules its rasterisation loop
+  with `requestAnimationFrame`, so `page.render()` **never resolves** in a tab the
+  browser considers hidden (`document.hidden === true`) -- it hangs silently with no
+  error. This makes OCR look broken when it is fine. To exercise the render path from
+  an automation context, pass `intent:"print"` in the render params, which switches
+  PDF.js to promise-based scheduling. Real users with a visible window are unaffected.
 
 ---
 
-*Updated by Claude - 10-Sep-2026, 09:05 EDT*
+*Updated by Claude - 10-Sep-2026, 09:36 EDT*

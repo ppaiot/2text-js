@@ -380,7 +380,24 @@ async function initialiserOCR(){
 
   log(t("ocr"));
 
+  /*
+    Chemins locaux : le script worker, le cœur WebAssembly et les modèles
+    linguistiques sont livrés avec l'outil. Sans ces trois options,
+    Tesseract.js télécharge tout depuis le CDN jsDelivr et l'OCR exige
+    alors une connexion Internet.
+
+    corePath désigne un répertoire, pas un fichier : Tesseract choisit
+    lui-même tesseract-core-simd-lstm.wasm.js si le navigateur supporte
+    SIMD, sinon tesseract-core-lstm.wasm.js. Les variantes « lstm »
+    correspondent au mode OEM 1 demandé ci-dessus.
+
+    langPath pointe vers le dossier contenant fra.traineddata.gz
+    et eng.traineddata.gz.
+  */
   ocrWorker=await Tesseract.createWorker("fra+eng",1,{
+    workerPath:"tesseract.worker.min.js",
+    corePath:".",
+    langPath:".",
     logger:m=>{
       if(m.status==="recognizing text"){
         progressOCR.value=Math.round((m.progress||0)*100);

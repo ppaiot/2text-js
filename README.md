@@ -75,12 +75,13 @@ unreliable.
 Every document is parsed inside the browser tab. **No file content is ever uploaded
 anywhere.**
 
-The one network call the tool makes is for OCR: Tesseract.js downloads its worker
-script, WASM core, and the `fra`/`eng` language models from the jsDelivr CDN the
-first time you process a scanned PDF. That request contains no document data. If you
-never hit a scanned PDF, the tool is fully offline.
+**The tool makes no network requests at all.** The OCR engine, its WebAssembly core,
+and the French and English language models are all bundled in this repository, so
+scanned PDFs are recognised entirely offline too. You can run the whole thing on an
+air-gapped machine.
 
-See [CLAUDE.md](CLAUDE.md) for how to make OCR fully offline as well.
+(Earlier versions fetched the OCR assets from the jsDelivr CDN on first use. That is
+no longer the case -- see `initialiserOCR()` in the source.)
 
 ---
 
@@ -124,8 +125,11 @@ pdf.worker.min.js      PDF.js worker
 jszip.min.js           JSZip 3.10.1 (docx/pptx unzipping)
 xlsx.full.min.js       SheetJS 0.18.5
 tesseract.min.js       Tesseract.js 5.1.1
-tesseract.worker.min.js, tesseract-core.wasm, tesseract-core.wasm.js
-                       vendored OCR runtime (see CLAUDE.md -- currently unused)
+tesseract.worker.min.js          OCR worker
+tesseract-core-simd-lstm.wasm.js OCR engine, SIMD build (used when supported)
+tesseract-core-lstm.wasm.js      OCR engine, non-SIMD fallback
+fra.traineddata.gz               French OCR model
+eng.traineddata.gz               English OCR model
 ```
 
 All dependencies are vendored so the tool keeps working without a package manager.
@@ -152,4 +156,4 @@ MIT -- see [LICENSE](LICENSE).
 
 ---
 
-*Updated by Claude - 10-Sep-2026, 09:05 EDT*
+*Updated by Claude - 10-Sep-2026, 09:34 EDT*
