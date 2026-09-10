@@ -142,7 +142,7 @@ All dependencies are vendored so the tool keeps working without a package manage
 | Tesseract.js | Apache-2.0 |
 
 Each retains its own licence; the bundled minified files carry their original
-headers.
+headers. Full detail in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ---
 

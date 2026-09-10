@@ -19,7 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-NOTE: the bundled third-party libraries (PDF.js, JSZip, SheetJS, Tesseract.js)
-are distributed under their own licences, which are retained in the minified
-files themselves. See the "Third-party licences" section of README.md.
