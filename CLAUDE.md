@@ -23,10 +23,10 @@ distribution model is the point of the tool -- anyone can copy the folder and ru
 
 ## Architecture
 
-`2-TXT-v5.html` -- 1488 lines, three parts:
+`2-TXT-v5.html` -- 1499 lines, three parts:
 
 - **lines 1-266** -- `<head>` (script tags + all CSS) and `<body>` markup.
-- **lines 268-1485** -- the entire application script.
+- **lines 268-1496** -- the entire application script.
 - Everything is at top level in the global scope. No modules, no classes.
 
 ### Global state (lines 270-290)
@@ -59,14 +59,14 @@ user changes a control after analysing -- see known issue 2.
 | 509-554 | Utilities | `log()`, `extensionDe()`, `nomSimple()`, `nettoyerTexte()`, `echapperMarkdown()`, `estFichierGenere()` |
 | 557-623 | Rendering state | `texteDe()`, `tailleDe()`, `mettreAJourResume()`, `rafraichirTailles()` |
 | 626-701 | Source selection | `entreesRetenues()`, `majCompteSelection()`, `rendreListeSource()`, `basculerSelection.onclick` |
-| 704-800 | PDF + OCR | `initialiserOCR()`, `augmenterContraste()`, `extraireTextePDF()` |
-| 803-839 | DOCX | `extraireTexteDOCX()` |
-| 846-1001 | PPTX | `extraireStructurePPTX()`, `structurePPTXVersTexte()` |
-| 1004-1195 | Excel | `motifsBruitExcel`, `estLigneBruitExcel()`, `valeurCelluleExcel()`, `lignesBrutesFeuille()`, `preparerLignes()`, `feuilleVersMarkdown()`, `analyserClasseur()`, `classeurVersTexte()` |
-| 1198-1247 | Dispatch | `extraireFichier(fichier)` -- extension switch |
-| 1250-1288 | Folder selection | `boutonChoisir.onclick`, `inputRepertoire` change handler |
-| 1291-1372 | Analysis run | `boutonAnalyser.onclick` -- the main loop |
-| 1375-1483 | Export | `boutonGenerer.onclick` -- builds and downloads the corpus |
+| 704-811 | PDF + OCR | `initialiserOCR()`, `augmenterContraste()`, `extraireTextePDF()` |
+| 814-850 | DOCX | `extraireTexteDOCX()` |
+| 857-1012 | PPTX | `extraireStructurePPTX()`, `structurePPTXVersTexte()` |
+| 1015-1206 | Excel | `motifsBruitExcel`, `estLigneBruitExcel()`, `valeurCelluleExcel()`, `lignesBrutesFeuille()`, `preparerLignes()`, `feuilleVersMarkdown()`, `analyserClasseur()`, `classeurVersTexte()` |
+| 1209-1258 | Dispatch | `extraireFichier(fichier)` -- extension switch |
+| 1261-1299 | Folder selection | `boutonChoisir.onclick`, `inputRepertoire` change handler |
+| 1302-1383 | Analysis run | `boutonAnalyser.onclick` -- the main loop |
+| 1386-1494 | Export | `boutonGenerer.onclick` -- builds and downloads the corpus |
 
 ### Data flow
 
@@ -113,12 +113,12 @@ page as scanned and OCR it. Text items are joined with `" "`, so intra-page line
 breaks are lost. OCR renders at scale `1.7` and binarises at grey threshold `165`
 (`augmenterContraste`). Both constants are hardcoded magic numbers.
 
-**DOCX** (`extraireTexteDOCX`, line 803)
+**DOCX** (`extraireTexteDOCX`, line 814)
 Reads only `word/document.xml`. Walks the DOM for `w:t` / `w:tab` / `w:br` / `w:cr`
 and appends `\n` after each `w:p`. Consequence: **tables are flattened** -- cell
 boundaries vanish. Headers, footers, footnotes, endnotes, and comments are not read.
 
-**PPTX** (line 846 onwards) -- **parsed once, rendered on demand**, same split as Excel.
+**PPTX** (line 857 onwards) -- **parsed once, rendered on demand**, same split as Excel.
 
 `extraireStructurePPTX()` collects all `a:t` nodes per `ppt/slides/slideN.xml` plus the
 matching `ppt/notesSlides/notesSlideN.xml`, returning
@@ -131,7 +131,7 @@ The slide-to-notes mapping assumes index parity (`slideN` <-> `notesSlideN`), wh
 holds for simple decks but is **not guaranteed** by OOXML -- the correct way is to
 follow the relationship files in `ppt/slides/_rels/`.
 
-**Excel** (line 1004 onwards) -- **parsed once, rendered on demand.**
+**Excel** (line 1015 onwards) -- **parsed once, rendered on demand.**
 
 *Parse phase*, during analysis: `analyserClasseur()` reads the workbook and returns
 `[{nom, lignesBrutes}]` per sheet. `lignesBrutesFeuille()` walks the declared `!ref`
@@ -181,9 +181,18 @@ expanded. Charts, images, and comments are ignored.
    into that key too, and the language toggle must keep calling `rafraichirTailles()`
    so the displayed sizes follow.
 
-3. **`file://` does not work.** PDF.js sets `workerSrc` to a relative path (line 268)
-   and Tesseract spawns a worker; both are blocked on `file://` origins. Must be
-   served over HTTP.
+3. **`file://` breaks OCR only -- not the whole tool.** PDF.js loses its worker and
+   silently falls back to the main thread, so PDFs still parse. Tesseract has no such
+   fallback: a worker on a `file://` page has an opaque (`null`) origin and may not read
+   local files, so the bundled OCR assets are unreachable and OCR throws. Measured, not
+   assumed -- see `SECURITY.md` section 4. Serving over HTTP fixes it; so does Chrome's
+   `--allow-file-access-from-files`, at a cost documented there.
+
+   **Do not "upgrade PDF.js to fix CVE-2024-4367".** 4.x and later ship ES modules
+   only, and module scripts are CORS-fetched, which `file://` cannot satisfy -- the
+   upgrade would break the tool's primary deployment. The vulnerable path is disabled
+   via `isEvalSupported:false` instead (`extraireTextePDF`, line 755). See `SECURITY.md`
+   finding F-1 before touching either.
 
 4. **Everything runs on the main thread, serially.** A large folder freezes the UI.
    There is no cancel button and no way to resume a partial run.

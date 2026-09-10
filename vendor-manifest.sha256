@@ -1,0 +1,14 @@
+# SHA-256 manifest of vendored third-party files.
+# Verify with:  sha256sum -c vendor-manifest.sha256
+# Source URLs and rationale: SECURITY.md
+#
+5b5799e6f8c680663207ac5b42ee14eed2a406fa7af48f50c154f0c0b1566946 *pdf.min.js
+feabdf309770ed24bba31a5467836cdc8cf639c705af27d52b585b041bb8527b *pdf.worker.min.js
+acc7e41455a80765b5fd9c7ee1b8078a6d160bbbca455aeae854de65c947d59e *jszip.min.js
+cc015130aa8521e7f088f88898eba949ccdcbfb38df0bd129b44b7273c3a6f41 *xlsx.full.min.js
+a8e29918d098b2b06e1012bdaeffb4aec0445c5d5654709023e0bd1f442a80e8 *tesseract.min.js
+aca1229639fc9907d86f96e825955a2b7c5716d17f3bc3acd71f9c7ab66181fc *tesseract.worker.min.js
+ce20eda9533cbed1e6c2b4276fbae1e0adc61b6754b5513084be601787b457cf *tesseract-core-simd-lstm.wasm.js
+8f04aa0cc81e7bde33f80e92fa01a7a665f0b4884d098acf5de9c7104a11dfaa *tesseract-core-lstm.wasm.js
+d611139672b3752c7097e671e4a1d9209dfd37f2aeb081ef6487fba3351e9255 *fra.traineddata.gz
+45b4cb346724ac1774f1c36f42f182b887bcdb28ebe63e6fff90ac41f3fcff91 *eng.traineddata.gz

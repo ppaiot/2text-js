@@ -7,7 +7,7 @@ its own licence, and each minified file retains its original licence header.
 |---|---|---|---|
 | PDF.js | 3.11.174 | Apache-2.0 | https://github.com/mozilla/pdf.js |
 | JSZip | 3.10.1 | MIT or GPLv3 (dual) | https://github.com/Stuk/jszip |
-| SheetJS (`xlsx`) | 0.18.5 | Apache-2.0 | https://github.com/SheetJS/sheetjs |
+| SheetJS (`xlsx`) | 0.20.3 | Apache-2.0 | https://cdn.sheetjs.com |
 | Tesseract.js | 5.1.1 | Apache-2.0 | https://github.com/naptha/tesseract.js |
 | Tesseract.js core (WASM) | 5.1.1 | Apache-2.0 | https://github.com/naptha/tesseract.js-core |
 | Tesseract OCR models (`fra`, `eng`) | 4.0.0_best_int | Apache-2.0 | https://github.com/tesseract-ocr/tessdata |
@@ -21,4 +21,4 @@ The 2TEXT-JS source itself is MIT licensed -- see [LICENSE](LICENSE).
 
 ---
 
-*Updated by Claude - 10-Sep-2026, 09:37 EDT*
+*Updated by Claude - 10-Sep-2026, 19:48 EDT*
