@@ -35,7 +35,11 @@ re-run in place without feeding the output back into itself.
 
 ### Extras
 
-- **Bilingual UI** -- French / English, toggled with one button. French is the default.
+- **Bilingual, end to end** -- French / English, toggled with one button (French is
+  the default). The toggle covers the generated corpus too: section headings, slide
+  and sheet markers all follow the chosen language. The `.txt` envelope keys
+  (`DATASET_TYPE`, `FILE_NAME`, ...) stay fixed, since they are there for machines
+  to parse.
 - **OCR for scanned PDFs** -- Tesseract.js with the `fra+eng` models. Pages are
   rendered at 1.7x, binarised, then recognised. A progress bar tracks it.
 - **Excel noise filter** (optional, on by default, Markdown output only) -- drops rows
@@ -156,4 +160,4 @@ MIT -- see [LICENSE](LICENSE).
 
 ---
 
-*Updated by Claude - 10-Sep-2026, 09:34 EDT*
+*Updated by Claude - 10-Sep-2026, 10:52 EDT*
