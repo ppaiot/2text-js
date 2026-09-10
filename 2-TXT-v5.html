@@ -755,7 +755,18 @@ function augmenterContraste(canvas){
 async function extraireTextePDF(fichier){
 
   const buffer=await fichier.arrayBuffer();
-  const pdf=await pdfjsLib.getDocument({data:buffer}).promise;
+  /*
+    isEvalSupported:false désactive la compilation des glyphes par
+    Function(), chemin exploité par CVE-2024-4367 : un PDF malveillant
+    peut y injecter du code via fontMatrix. PDF.js 3.11.174 est la
+    dernière version distribuée en script classique ; les versions 4.x
+    corrigées sont livrées uniquement en modules ES, incompatibles avec
+    une ouverture directe en file:// (voir SECURITY.md).
+  */
+  const pdf=await pdfjsLib.getDocument({
+    data:buffer,
+    isEvalSupported:false
+  }).promise;
   let texte="";
 
   for(let pageNo=1;pageNo<=pdf.numPages;pageNo++){

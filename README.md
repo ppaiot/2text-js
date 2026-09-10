@@ -127,7 +127,7 @@ Documents are ordered largest-first by character count.
 pdf.min.js             PDF.js 3.11.174
 pdf.worker.min.js      PDF.js worker
 jszip.min.js           JSZip 3.10.1 (docx/pptx unzipping)
-xlsx.full.min.js       SheetJS 0.18.5
+xlsx.full.min.js       SheetJS 0.20.3
 tesseract.min.js       Tesseract.js 5.1.1
 tesseract.worker.min.js          OCR worker
 tesseract-core-simd-lstm.wasm.js OCR engine, SIMD build (used when supported)
@@ -154,10 +154,20 @@ headers. Full detail in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ---
 
+## Security
+
+Documents are parsed entirely in the browser and never leave the machine. Vendored
+dependencies are pinned and hash-verified (`sha256sum -c vendor-manifest.sha256`).
+
+Known issues, the reasoning behind them, and the action plan are documented in
+[SECURITY.md](SECURITY.md) -- read it before deploying this anywhere sensitive.
+
+---
+
 ## Licence
 
 MIT -- see [LICENSE](LICENSE).
 
 ---
 
-*Updated by Claude - 10-Sep-2026, 10:52 EDT*
+*Updated by Claude - 10-Sep-2026, 19:48 EDT*
