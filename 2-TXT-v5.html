@@ -322,6 +322,12 @@ document.getElementById("boutonLangue").onclick=function(){
 formatSortie.onchange=function(){
   boutonGenerer.textContent=
     formatSortie.value==="md" ? t("genererMD") : t("genererTXT");
+
+  rafraichirTailles();
+};
+
+nettoyageExcel.onchange=function(){
+  rafraichirTailles();
 };
 
 /* -----------------------------------------------------------
@@ -370,19 +376,67 @@ function estFichierGenere(nom){
   );
 }
 
+/*
+  Texte courant d'un document. Pour un classeur, le rendu dépend du format
+  de sortie et de l'option de nettoyage actifs à cet instant : il est donc
+  calculé ici plutôt que figé pendant l'analyse. Le résultat est mémorisé
+  tant que ces deux réglages ne changent pas.
+*/
+function texteDe(resultat){
+
+  if(!resultat.feuilles) return resultat.texte;
+
+  const cle=formatSortie.value+"|"+nettoyageExcel.checked;
+
+  if(resultat.cacheCle!==cle){
+    const rendu=classeurVersTexte(
+      resultat.feuilles,
+      formatSortie.value,
+      nettoyageExcel.checked
+    );
+
+    resultat.cacheCle=cle;
+    resultat.cacheTexte=rendu.texte;
+    resultat.cacheRetirees=rendu.retirees;
+  }
+
+  return resultat.cacheTexte;
+}
+
+function tailleDe(resultat){
+  return texteDe(resultat).length;
+}
+
 function mettreAJourResume(){
   let total=0;
   let nb=0;
 
   tableBody.querySelectorAll("tr").forEach((row,i)=>{
     if(row.querySelector("input").checked){
-      total+=resultatsConversion[i].taille;
+      total+=tailleDe(resultatsConversion[i]);
       nb++;
     }
   });
 
   document.getElementById("nbFichiers").textContent=nb;
   document.getElementById("tailleTotale").textContent=total.toLocaleString();
+}
+
+/*
+  Les tailles affichées dépendent du rendu courant : elles doivent être
+  recalculées dès que le format ou l'option de nettoyage change.
+*/
+function rafraichirTailles(){
+
+  tableBody.querySelectorAll("tr").forEach((row,i)=>{
+    const cellule=row.querySelector(".taille");
+
+    if(cellule){
+      cellule.textContent=tailleDe(resultatsConversion[i]).toLocaleString();
+    }
+  });
+
+  mettreAJourResume();
 }
 
 /* -----------------------------------------------------------
@@ -693,11 +747,14 @@ function valeurCelluleExcel(cellule){
     .trim();
 }
 
-function extraireFeuilleExcel(sheet,nettoyer){
+/*
+  Lecture brute d'une feuille : uniquement ce qui ne dépend ni du format
+  de sortie ni de l'option de nettoyage. Le résultat est conservé pour la
+  durée de la session et rendu à la demande.
+*/
+function lignesBrutesFeuille(sheet){
 
-  if(!sheet["!ref"]){
-    return {lignes:[], retirees:0};
-  }
+  if(!sheet["!ref"]) return [];
 
   const plage=XLSX.utils.decode_range(sheet["!ref"]);
   const lignesBrutes=[];
@@ -713,15 +770,23 @@ function extraireFeuilleExcel(sheet,nettoyer){
     lignesBrutes.push(ligne);
   }
 
-  // Retrait des lignes vides.
-  let lignes=lignesBrutes.filter(ligne=>ligne.some(v=>v!==""));
+  // Retrait des lignes vides : indépendant du format et du nettoyage.
+  return lignesBrutes.filter(ligne=>ligne.some(v=>v!==""));
+}
 
+/*
+  Filtrage du bruit puis élagage des colonnes vides. L'ordre compte :
+  retirer des lignes peut vider entièrement une colonne, donc l'élagage
+  doit suivre le filtrage et être refait à chaque changement d'option.
+*/
+function preparerLignes(lignesBrutes,nettoyer){
+
+  let lignes=lignesBrutes;
   let retirees=0;
 
   if(nettoyer){
-    const avant=lignes.length;
     lignes=lignes.filter(ligne=>!estLigneBruitExcel(ligne));
-    retirees=avant-lignes.length;
+    retirees=lignesBrutes.length-lignes.length;
   }
 
   if(!lignes.length){
@@ -783,45 +848,43 @@ function feuilleVersMarkdown(nomFeuille,lignes){
   return sortie;
 }
 
-async function extraireExcelMarkdown(fichier,nettoyer){
+async function analyserClasseur(fichier){
 
   const buffer=await fichier.arrayBuffer();
   const workbook=XLSX.read(buffer,{type:"array"});
-  let texte="";
-  let totalRetirees=0;
 
-  workbook.SheetNames.forEach(nomFeuille=>{
-    const resultat=extraireFeuilleExcel(
-      workbook.Sheets[nomFeuille],
-      nettoyer
-    );
-
-    totalRetirees+=resultat.retirees;
-    texte+=feuilleVersMarkdown(nomFeuille,resultat.lignes);
-  });
-
-  if(totalRetirees>0){
-    log(t("nettoyage")+totalRetirees+" ("+fichier.name+")");
-  }
-
-  return nettoyerTexte(texte);
+  return workbook.SheetNames.map(nomFeuille=>({
+    nom:nomFeuille,
+    lignesBrutes:lignesBrutesFeuille(workbook.Sheets[nomFeuille])
+  }));
 }
 
-async function extraireExcelTexte(fichier){
+/*
+  Rendu synchrone d'un classeur déjà analysé. Appelé à l'affichage et à
+  l'export, jamais pendant l'analyse : c'est ce qui permet de changer de
+  format ou de cocher le nettoyage sans relire les fichiers.
+*/
+function classeurVersTexte(feuilles,format,nettoyer){
 
-  const buffer=await fichier.arrayBuffer();
-  const workbook=XLSX.read(buffer,{type:"array"});
+  // Le nettoyage ne s'applique qu'au rendu Markdown.
+  const nettoyageActif=(format==="md") && nettoyer;
+
   let texte="";
+  let retirees=0;
 
-  workbook.SheetNames.forEach(nomFeuille=>{
-    const resultat=extraireFeuilleExcel(
-      workbook.Sheets[nomFeuille],
-      false
-    );
+  feuilles.forEach(feuille=>{
+
+    const resultat=preparerLignes(feuille.lignesBrutes,nettoyageActif);
+    retirees+=resultat.retirees;
 
     if(!resultat.lignes.length) return;
 
-    texte+="--- FEUILLE : "+nomFeuille+" ---\n";
+    if(format==="md"){
+      texte+=feuilleVersMarkdown(feuille.nom,resultat.lignes);
+      return;
+    }
+
+    texte+="--- FEUILLE : "+feuille.nom+" ---\n";
 
     resultat.lignes.forEach(ligne=>{
       texte+=ligne.join("\t")+"\n";
@@ -830,52 +893,40 @@ async function extraireExcelTexte(fichier){
     texte+="\n";
   });
 
-  return nettoyerTexte(texte);
+  return {texte:nettoyerTexte(texte),retirees};
 }
 
 /* -----------------------------------------------------------
    TRAITEMENT DES FICHIERS
 ----------------------------------------------------------- */
 
-async function extraireFichier(fichier,format){
+async function extraireFichier(fichier){
 
   const ext=extensionDe(fichier);
 
   if(ext==="pdf"){
-    return {
-      texte:await extraireTextePDF(fichier),
-      estExcel:false
-    };
+    return {texte:await extraireTextePDF(fichier)};
   }
 
   if(ext==="docx"){
-    return {
-      texte:await extraireTexteDOCX(fichier),
-      estExcel:false
-    };
+    return {texte:await extraireTexteDOCX(fichier)};
   }
 
   if(ext==="pptx"){
-    return {
-      texte:await extraireTextePPTX(fichier),
-      estExcel:false
-    };
+    return {texte:await extraireTextePPTX(fichier)};
   }
 
+  /*
+    Les classeurs ne sont pas rendus ici : on conserve les lignes lues et
+    le texte est produit à la demande, selon le format et l'option de
+    nettoyage en vigueur au moment de l'affichage ou de l'export.
+  */
   if(ext==="xls" || ext==="xlsx"){
-    return {
-      texte:format==="md"
-        ? await extraireExcelMarkdown(fichier,nettoyageExcel.checked)
-        : await extraireExcelTexte(fichier),
-      estExcel:true
-    };
+    return {feuilles:await analyserClasseur(fichier)};
   }
 
   if(ext==="txt"){
-    return {
-      texte:nettoyerTexte(await fichier.text()),
-      estExcel:false
-    };
+    return {texte:nettoyerTexte(await fichier.text())};
   }
 
   /*
@@ -886,12 +937,11 @@ async function extraireFichier(fichier,format){
     return {
       texte:(await fichier.text())
         .replace(/\r\n/g,"\n")
-        .trim(),
-      estExcel:false
+        .trim()
     };
   }
 
-  return {texte:"",estExcel:false};
+  return {texte:""};
 }
 
 /* -----------------------------------------------------------
@@ -950,24 +1000,24 @@ boutonAnalyser.onclick=async function(){
   resultatsConversion=[];
   tableBody.innerHTML="";
 
-  const formatActuel=formatSortie.value;
-
   for(const fichier of fichiers){
 
     const chemin=fichier.webkitRelativePath||fichier.name;
     log(t("conversion")+chemin);
 
     try{
-      const resultat=await extraireFichier(fichier,formatActuel);
+      const resultat=await extraireFichier(fichier);
 
-      if(!resultat.texte.trim()) continue;
-
-      resultatsConversion.push({
+      const entree={
         nom:nomSimple(chemin),
         chemin:chemin,
-        texte:resultat.texte,
-        taille:resultat.texte.length
-      });
+        texte:resultat.texte||"",
+        feuilles:resultat.feuilles
+      };
+
+      if(!texteDe(entree).trim()) continue;
+
+      resultatsConversion.push(entree);
 
     }catch(erreur){
       log(t("erreur")+chemin);
@@ -981,7 +1031,7 @@ boutonAnalyser.onclick=async function(){
     ocrInitialise=false;
   }
 
-  resultatsConversion.sort((a,b)=>b.taille-a.taille);
+  resultatsConversion.sort((a,b)=>tailleDe(b)-tailleDe(a));
 
   resultatsConversion.forEach(fichier=>{
 
@@ -1001,7 +1051,7 @@ boutonAnalyser.onclick=async function(){
 
     const tdTaille=document.createElement("td");
     tdTaille.className="taille";
-    tdTaille.textContent=fichier.taille.toLocaleString();
+    tdTaille.textContent=tailleDe(fichier).toLocaleString();
 
     tr.appendChild(tdInclure);
     tr.appendChild(tdNom);
@@ -1032,6 +1082,22 @@ boutonGenerer.onclick=function(){
     if(!ligne.querySelector("input").checked) return;
     documents.push(resultatsConversion[index]);
   });
+
+  /*
+    Le compte des lignes Excel retirées est rapporté sur le rendu
+    réellement exporté, et non sur celui calculé pendant l'analyse.
+  */
+  let totalRetirees=0;
+
+  documents.forEach(doc=>{
+    if(!doc.feuilles) return;
+    texteDe(doc);
+    totalRetirees+=doc.cacheRetirees||0;
+  });
+
+  if(totalRetirees>0){
+    log(t("nettoyage")+totalRetirees);
+  }
 
   let contenu="";
 
@@ -1064,7 +1130,7 @@ boutonGenerer.onclick=function(){
       contenu+="- **Fichier source :** "+document.nom+"\n";
       contenu+="- **Chemin source :** "+document.chemin+"\n\n";
       contenu+="## Contenu\n\n";
-      contenu+=document.texte+"\n\n";
+      contenu+=texteDe(document)+"\n\n";
       contenu+="---\n\n";
     });
 
@@ -1087,7 +1153,7 @@ boutonGenerer.onclick=function(){
       contenu+="FILE_NAME: "+document.nom+"\n";
       contenu+="FILE_PATH: "+document.chemin+"\n";
       contenu+="CONTENT_START\n";
-      contenu+=document.texte+"\n";
+      contenu+=texteDe(document)+"\n";
       contenu+="CONTENT_END\n";
       contenu+="===== DOCUMENT END =====\n\n";
     });
