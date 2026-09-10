@@ -156,10 +156,13 @@ not expanded. Charts, images, and comments are ignored.
 8. **The version number lives only in the filename** (`2-TXT-v5.html`). There is no
    version constant in the code and no changelog.
 
-9. **No `background` on `body`, but `color:#222` is set.** In a browser or embedded
-   view rendering with a dark ground, the page inherits the dark background and the
-   dark text becomes unreadable. Fix by setting an explicit `background:#fff` on
-   `body`, or by adding a real dark-theme palette.
+9. **The page is deliberately light-only.** `:root` sets `color-scheme:light` and an
+   explicit white background, and `body` repeats the background. This is load-bearing:
+   the rest of the stylesheet assumes a light ground (`#f7f7f7` zones, white cells,
+   `#ddd` borders), so removing either declaration makes the page unreadable against a
+   dark host. There is no dark theme -- adding one means moving the palette to CSS
+   custom properties and redefining them under `prefers-color-scheme`, which is a
+   design decision, not a bug fix.
 
 10. **The Excel noise filter is Markdown-only.** `extraireFichier()` (line 825) only
     passes `nettoyageExcel.checked` on the Markdown branch; the text branch calls

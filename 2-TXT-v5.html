@@ -10,11 +10,26 @@
 <script src="tesseract.min.js"></script>
 
 <style>
+/*
+  La feuille de style suppose un fond clair : zones #f7f7f7, cellules
+  blanches, bordures #ddd. Sans fond explicite, la page hérite du fond
+  de son hôte et devient illisible en mode sombre.
+
+  color-scheme:light force également les contrôles natifs (menu
+  déroulant, cases à cocher, sélecteur de fichier, ascenseurs) à
+  s'afficher en version claire.
+*/
+:root{
+  color-scheme:light;
+  background:#ffffff;
+}
+
 body{
   font-family:Arial,sans-serif;
   max-width:1100px;
   margin:40px auto;
   padding:20px;
+  background:#ffffff;
   color:#222;
 }
 
