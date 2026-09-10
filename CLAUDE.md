@@ -23,10 +23,10 @@ distribution model is the point of the tool -- anyone can copy the folder and ru
 
 ## Architecture
 
-`2-TXT-v5.html` -- 1106 lines, three parts:
+`2-TXT-v5.html` -- 1172 lines, three parts:
 
 - **lines 1-208** -- `<head>` (script tags + all CSS) and `<body>` markup.
-- **lines 210-1103** -- the entire application script.
+- **lines 210-1169** -- the entire application script.
 - Everything is at top level in the global scope. No modules, no classes.
 
 ### Global state (lines 212-229)
@@ -35,27 +35,36 @@ distribution model is the point of the tool -- anyone can copy the folder and ru
 |---|---|
 | `langue` | `"fr"` or `"en"`; drives the `T` translation lookup |
 | `fichiersSelectionnes` | Raw `File[]` from the directory input |
-| `resultatsConversion` | `{nom, chemin, texte, taille}[]` after extraction, sorted largest-first |
+| `resultatsConversion` | `{nom, chemin, texte, feuilles?}[]` after extraction, sorted largest-first |
 | `ocrWorker`, `ocrInitialise` | Lazily created Tesseract worker; terminated after each analysis run |
 
 `resultatsConversion` and the DOM table rows are **index-aligned** -- row `i` maps to
-`resultatsConversion[i]`. Both `mettreAJourResume()` and the generate handler rely on
-this. Do not sort or filter one without the other.
+`resultatsConversion[i]`. `mettreAJourResume()`, `rafraichirTailles()` and the generate
+handler all rely on this. Do not sort or filter one without the other.
+
+**Entries do not all carry finished text.** A spreadsheet entry has `feuilles` (its
+parsed rows) and an empty `texte`; everything else has `texte` and no `feuilles`.
+Never read `.texte` directly -- go through `texteDe(entry)` (line 370), which renders
+spreadsheets on demand from the current format and cleanup settings and memoises the
+result on the entry itself (`cacheCle` / `cacheTexte` / `cacheRetirees`). `tailleDe()`
+is the same thing for character counts. This is what keeps the export honest when the
+user changes a control after analysing -- see known issue 2.
 
 ### Code map
 
 | Lines | Section | Key symbols |
 |---|---|---|
 | 233-311 | i18n | `T` (fr/en string table), `t()`, `appliquerLangue()` |
-| 316-374 | Utilities | `log()`, `extensionDe()`, `nomSimple()`, `nettoyerTexte()`, `echapperMarkdown()`, `estFichierGenere()`, `mettreAJourResume()` |
-| 377-473 | PDF + OCR | `initialiserOCR()`, `augmenterContraste()`, `extraireTextePDF()` |
-| 476-512 | DOCX | `extraireTexteDOCX()` |
-| 519-626 | PPTX | `extraireTextePPTX()` |
-| 640-817 | Excel | `motifsBruitExcel`, `estLigneBruitExcel()`, `valeurCelluleExcel()`, `extraireFeuilleExcel()`, `feuilleVersMarkdown()`, `extraireExcelMarkdown()`, `extraireExcelTexte()` |
-| 825-882 | Dispatch | `extraireFichier(fichier, format)` -- extension switch |
-| 886-918 | Folder selection | `boutonChoisir.onclick`, `inputRepertoire` change handler |
-| 921-1006 | Analysis run | `boutonAnalyser.onclick` -- the main loop |
-| 1009-1101 | Export | `boutonGenerer.onclick` -- builds and downloads the corpus |
+| 322-367 | Utilities | `log()`, `extensionDe()`, `nomSimple()`, `nettoyerTexte()`, `echapperMarkdown()`, `estFichierGenere()` |
+| 370-428 | Rendering state | `texteDe()`, `tailleDe()`, `mettreAJourResume()`, `rafraichirTailles()` |
+| 431-527 | PDF + OCR | `initialiserOCR()`, `augmenterContraste()`, `extraireTextePDF()` |
+| 530-566 | DOCX | `extraireTexteDOCX()` |
+| 573-680 | PPTX | `extraireTextePPTX()` |
+| 694-885 | Excel | `motifsBruitExcel`, `estLigneBruitExcel()`, `valeurCelluleExcel()`, `lignesBrutesFeuille()`, `preparerLignes()`, `feuilleVersMarkdown()`, `analyserClasseur()`, `classeurVersTexte()` |
+| 888-933 | Dispatch | `extraireFichier(fichier)` -- extension switch |
+| 936-968 | Folder selection | `boutonChoisir.onclick`, `inputRepertoire` change handler |
+| 971-1056 | Analysis run | `boutonAnalyser.onclick` -- the main loop |
+| 1059-1167 | Export | `boutonGenerer.onclick` -- builds and downloads the corpus |
 
 ### Data flow
 
@@ -87,18 +96,18 @@ folder picker -> fichiersSelectionnes (File[])
 
 ## Per-format extraction notes
 
-**PDF** (`extraireTextePDF`, line 428)
+**PDF** (`extraireTextePDF`, line 482)
 Per page: pull the text layer; if it yields **fewer than 20 characters**, treat the
 page as scanned and OCR it. Text items are joined with `" "`, so intra-page line
 breaks are lost. OCR renders at scale `1.7` and binarises at grey threshold `165`
 (`augmenterContraste`). Both constants are hardcoded magic numbers.
 
-**DOCX** (`extraireTexteDOCX`, line 476)
+**DOCX** (`extraireTexteDOCX`, line 530)
 Reads only `word/document.xml`. Walks the DOM for `w:t` / `w:tab` / `w:br` / `w:cr`
 and appends `\n` after each `w:p`. Consequence: **tables are flattened** -- cell
 boundaries vanish. Headers, footers, footnotes, endnotes, and comments are not read.
 
-**PPTX** (`extraireTextePPTX`, line 519)
+**PPTX** (`extraireTextePPTX`, line 573)
 Collects all `a:t` nodes per `ppt/slides/slideN.xml`, prefixed with
 `--- DIAPOSITIVE N ---`, then the matching `ppt/notesSlides/notesSlideN.xml`. The
 slide-to-notes mapping assumes index parity (`slideN` <-> `notesSlideN`), which holds
@@ -106,21 +115,33 @@ for simple decks but is **not guaranteed** by OOXML -- the correct way is to fol
 the relationship files in `ppt/slides/_rels/`. Falls back to dumping all notes if no
 slide text was found.
 
-**Excel** (line 640 onwards)
-`extraireFeuilleExcel()` reads the declared `!ref` range cell by cell, preferring
-`cell.w` (formatted display text) over `cell.v` (raw value). Drops empty rows, then
-optionally noise rows, then fully empty columns.
-`feuilleVersMarkdown()` switches to a labelled-list rendering when a sheet has
-**more than 12 columns**. Row 1 is always assumed to be the header row.
-Formulas are not evaluated -- SheetJS returns cached values only. Merged cells are
-not expanded. Charts, images, and comments are ignored.
+**Excel** (line 694 onwards) -- **parsed once, rendered on demand.**
+
+*Parse phase*, during analysis: `analyserClasseur()` reads the workbook and returns
+`[{nom, lignesBrutes}]` per sheet. `lignesBrutesFeuille()` walks the declared `!ref`
+range cell by cell, preferring `cell.w` (formatted display text) over `cell.v` (raw
+value), and drops fully empty rows. Only format-independent work happens here.
+
+*Render phase*, at display and export: `classeurVersTexte(feuilles, format, nettoyer)`
+produces Markdown or tab-separated text synchronously. `preparerLignes()` applies the
+noise filter and then prunes empty columns -- **in that order, and at render time**,
+because dropping noise rows can empty a column that was previously populated. Caching
+the pruned columns from a previous render would be wrong.
+
+`feuilleVersMarkdown()` switches to a labelled-list rendering when a sheet has **more
+than 12 columns**. Row 1 is always assumed to be the header row. The noise filter
+applies to Markdown output only (`nettoyageActif` in `classeurVersTexte`), matching
+the checkbox label.
+
+Formulas are not evaluated -- SheetJS returns cached values only. Merged cells are not
+expanded. Charts, images, and comments are ignored.
 
 ---
 
 ## Known issues / gotchas
 
 1. **OCR is fully offline, and that constrains the OEM setting.** `initialiserOCR()`
-   (line 377) passes `workerPath`, `corePath:"."` and `langPath:"."`, so every OCR
+   (line 431) passes `workerPath`, `corePath:"."` and `langPath:"."`, so every OCR
    asset is served from the project folder and nothing touches the jsDelivr CDN.
    `corePath` is a **directory**, so Tesseract picks the build itself: with OEM `1`
    (`LSTM_ONLY`, passed to `createWorker`) it resolves `lstmOnly=true` and requests
@@ -130,12 +151,14 @@ not expanded. Charts, images, and comments are ignored.
    `tesseract-core.wasm.js`, which are not in the repo -- OCR would 404 and hang. If
    you ever need the legacy engine, vendor those two files as well.
 
-2. **Output format is captured at analysis time, not export time.** Excel files are
-   the only format whose extraction depends on `formatSortie` (Markdown tables vs.
-   tab-separated). `boutonAnalyser.onclick` snapshots `formatSortie.value` at line 935.
-   If the user analyses as Markdown, then switches the dropdown to text and exports,
-   the Excel sections stay in Markdown. Re-analysis is required and nothing tells the
-   user that.
+2. **Spreadsheet rendering is deferred on purpose -- do not "optimise" it away.**
+   Excel is the only format whose output depends on `formatSortie` and
+   `nettoyageExcel`. Analysis stores parsed rows, not rendered text, and
+   `texteDe()` renders at display and export time from the *current* control values.
+   Storing a rendered string during analysis (the previous behaviour) silently
+   produced Markdown tables inside `.txt` corpora whenever the user changed the
+   dropdown after analysing. The memo key is `format|nettoyer`; if you add another
+   control that affects Excel output, it must go into that key too.
 
 3. **`file://` does not work.** PDF.js sets `workerSrc` to a relative path (line 211)
    and Tesseract spawns a worker; both are blocked on `file://` origins. Must be
@@ -150,7 +173,7 @@ not expanded. Charts, images, and comments are ignored.
 6. **No file-level picking.** `webkitdirectory` takes a whole folder; per-file
    selection only happens after extraction, via the results table.
 
-7. **The `estFichierGenere()` guard** (line 345) is name-based only and matches any
+7. **The `estFichierGenere()` guard** (line 351) is name-based only and matches any
    filename containing `documents_concat` or `corpus_concat`.
 
 8. **The version number lives only in the filename** (`2-TXT-v5.html`). There is no
@@ -161,10 +184,11 @@ not expanded. Charts, images, and comments are ignored.
    dark text becomes unreadable. Fix by setting an explicit `background:#fff` on
    `body`, or by adding a real dark-theme palette.
 
-10. **The Excel noise filter is Markdown-only.** `extraireFichier()` (line 825) only
-    passes `nettoyageExcel.checked` on the Markdown branch; the text branch calls
-    `extraireExcelTexte()`, which hardcodes `nettoyer=false`. The checkbox silently
-    does nothing when the output format is text.
+10. **The Excel noise filter is Markdown-only, by design.** `classeurVersTexte()`
+    computes `nettoyageActif=(format==="md") && nettoyer`, matching the checkbox
+    label ("... lors de la génération Markdown"). Toggling the checkbox now takes
+    effect immediately in Markdown mode -- previously it was read once during analysis
+    and silently ignored afterwards. In text mode it is still intentionally inert.
 
 ---
 
@@ -172,7 +196,6 @@ not expanded. Charts, images, and comments are ignored.
 
 Ideas that fit the tool's shape, roughly in order of value:
 
-- Re-extract Excel files on format change, or warn the user (issue 2).
 - Add a version constant and surface it in the UI and the generated corpus header.
 - Per-document token estimate alongside the character count.
 - Drag-and-drop as an alternative to the folder picker.
@@ -202,4 +225,4 @@ Ideas that fit the tool's shape, roughly in order of value:
 
 ---
 
-*Updated by Claude - 10-Sep-2026, 09:36 EDT*
+*Updated by Claude - 10-Sep-2026, 10:02 EDT*
