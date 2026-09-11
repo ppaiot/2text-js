@@ -53,20 +53,23 @@ re-run in place without feeding the output back into itself.
 
 ## Running it
 
-The tool needs to be served over HTTP. Opening `2-TXT-v5.html` directly from the
-filesystem (`file://`) will break the PDF.js worker and the OCR worker, because
-browsers block workers on `file://` origins.
+**The simple way: double-click `2-TXT-v5.html`.** Every format works, and scanned PDFs
+are OCR'd by fetching the OCR engine from a CDN -- so that one feature needs an internet
+connection. Nothing else does, and no document content is ever sent anywhere.
 
-From the project folder:
+**The offline way: serve the folder over HTTP.** OCR then uses the bundled engine and
+models, and the tool makes no network requests at all. From the project folder:
 
 ```bash
 python -m http.server 8000
 ```
 
-Then open <http://localhost:8000/2-TXT-v5.html>.
+Then open <http://localhost:8000/2-TXT-v5.html>. Any static file server works equally
+well (`npx serve`, `php -S`, VS Code Live Server, etc.).
 
-Any static file server works equally well (`npx serve`, `php -S`, VS Code Live
-Server, etc.).
+Why the difference: OCR runs in a Web Worker, and a worker on a `file://` page is not
+permitted to read local files, so the bundled OCR assets are unreachable there. See
+[SECURITY.md](SECURITY.md) section 4.
 
 **Browser requirement:** the folder picker uses `webkitdirectory`, so you need a
 Chromium-based browser (Chrome, Edge, Brave) or a recent Firefox. Safari support is
@@ -79,13 +82,23 @@ unreliable.
 Every document is parsed inside the browser tab. **No file content is ever uploaded
 anywhere.**
 
-**The tool makes no network requests at all.** The OCR engine, its WebAssembly core,
-and the French and English language models are all bundled in this repository, so
-scanned PDFs are recognised entirely offline too. You can run the whole thing on an
-air-gapped machine.
+**Served over HTTP, the tool makes no network requests at all.** The OCR engine, its
+WebAssembly core and the French and English language models are bundled here, so even
+scanned PDFs are recognised offline. That configuration runs on an air-gapped machine.
 
-(Earlier versions fetched the OCR assets from the jsDelivr CDN on first use. That is
-no longer the case -- see `initialiserOCR()` in the source.)
+**Opened directly from disk (`file://`), OCR alone needs the internet.** Tesseract runs
+recognition in a Web Worker, and a worker on a `file://` page gets an opaque origin that
+browsers forbid from reading local files -- so the bundled OCR assets are unreachable no
+matter what path they are given. The tool detects this and loads *only* the OCR engine
+and language models from the jsDelivr CDN instead.
+
+Either way, **no document content is ever transmitted.** The only thing fetched is the
+OCR software. Everything else -- PDF text layers, DOCX, PPTX, XLSX, TXT, MD -- works
+offline from `file://` with no network at all.
+
+If the CDN is unreachable (a corporate proxy, say), scanned pages are skipped with a
+message in the log and **the rest of the document is still converted**. Serve the folder
+over HTTP to get offline OCR back. See [SECURITY.md](SECURITY.md) for the full picture.
 
 ---
 
@@ -170,4 +183,4 @@ MIT -- see [LICENSE](LICENSE).
 
 ---
 
-*Updated by Claude - 10-Sep-2026, 19:48 EDT*
+*Updated by Claude - 11-Sep-2026, 09:12 EDT*
