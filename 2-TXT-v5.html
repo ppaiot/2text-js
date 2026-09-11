@@ -170,6 +170,18 @@ button:disabled{
   font-size:13px;
 }
 
+/* Confirmation visuelle du dossier choisi, avant toute conversion. */
+#enteteDossier{
+  display:none;
+  margin-top:15px;
+  padding:8px 12px;
+  background:#eef5fb;
+  border-left:5px solid #1f4e79;
+  border-radius:3px;
+  font-family:Consolas,monospace;
+  font-size:13px;
+}
+
 table{
   width:100%;
   border-collapse:collapse;
@@ -255,6 +267,8 @@ progress{
 
   <progress id="progressOCR" value="0" max="100"></progress>
 
+  <div id="enteteDossier"></div>
+
   <div id="listeSelection"></div>
 
   <div id="barreSelection">
@@ -324,6 +338,7 @@ const listeSelection=document.getElementById("listeSelection");
 const barreSelection=document.getElementById("barreSelection");
 const basculerSelection=document.getElementById("basculerSelection");
 const compteSelection=document.getElementById("compteSelection");
+const enteteDossier=document.getElementById("enteteDossier");
 const boutonOCR=document.getElementById("boutonOCR");
 const avertissementOCR=document.getElementById("avertissementOCR");
 
@@ -397,6 +412,8 @@ fr:{
   toutDeselectionner:"Tout désélectionner",
   retenus:"Fichiers retenus : ",
   nonPris:" (format non pris en charge)",
+  boutonLangue:"English",
+  enteteDossier:"Dossier : {d} — {n} fichier(s), dont {k} convertible(s)",
 
   noteFormats:"Formats acceptés :",
   noteOCR:"Les PDF numérisés sont traités par OCR si l'option est activée.",
@@ -469,6 +486,8 @@ en:{
   toutDeselectionner:"Deselect all",
   retenus:"Files selected: ",
   nonPris:" (unsupported format)",
+  boutonLangue:"Français",
+  enteteDossier:"Folder: {d} — {n} file(s), {k} convertible",
 
   noteFormats:"Accepted formats:",
   noteOCR:"Scanned PDFs are processed with OCR when the option is enabled.",
@@ -546,6 +565,13 @@ function appliquerLangue(){
   document.getElementById("libelleNbFichiers").textContent=t("libelleNbFichiers");
   document.getElementById("libelleTaille").textContent=t("libelleTaille");
   document.getElementById("libelleCaracteres").textContent=t("libelleCaracteres");
+
+  /*
+    Le bouton annonce la langue vers laquelle il bascule, pas la langue
+    courante. Il était figé dans le balisage et ne changeait jamais.
+  */
+  document.getElementById("boutonLangue").textContent=t("boutonLangue");
+
   majBoutonOCR();
   boutonChoisir.textContent=t("choisir");
   boutonAnalyser.textContent=t("analyser");
@@ -559,6 +585,7 @@ function appliquerLangue(){
 
   if(!entreesSource.length){
     listeSelection.textContent=t("aucun");
+    enteteDossier.style.display="none";
     return;
   }
 
@@ -758,7 +785,34 @@ function majCompteSelection(){
   ici, avant toute conversion : c'est ce qui évite de payer l'OCR sur des
   fichiers dont on ne veut pas.
 */
+/*
+  Le sélecteur de dossier du système n'affiche pas les fichiers qu'il
+  contient : l'utilisateur choisit à l'aveugle. Cet en-tête nomme le
+  dossier retenu et compte ce qui s'y trouve, pour confirmation avant
+  toute conversion.
+*/
+function majEnteteDossier(){
+
+  if(!entreesSource.length){
+    enteteDossier.style.display="none";
+    return;
+  }
+
+  const premier=entreesSource[0].chemin;
+  const nom=premier.includes("/") ? premier.split("/")[0] : premier;
+  const convertibles=entreesSource.filter(entree=>entree.supporte).length;
+
+  enteteDossier.textContent=t("enteteDossier")
+    .replace("{d}",nom)
+    .replace("{n}",entreesSource.length)
+    .replace("{k}",convertibles);
+
+  enteteDossier.style.display="block";
+}
+
 function rendreListeSource(){
+
+  majEnteteDossier();
 
   listeSelection.innerHTML="";
 
@@ -1472,6 +1526,7 @@ inputRepertoire.addEventListener("change",()=>{
 
   if(!entreesSource.length){
     listeSelection.textContent=t("aucun");
+    enteteDossier.style.display="none";
     barreSelection.style.display="none";
     boutonAnalyser.disabled=true;
     return;
