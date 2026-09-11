@@ -17,7 +17,7 @@ server, no account, and no upload.
 | Property | Status | How it was checked |
 |---|---|---|
 | Outbound network calls carrying document data | **None** | no `fetch` / `XHR` / `sendBeacon` / `WebSocket` anywhere in the app |
-| Other outbound requests | OCR engine + language models from jsDelivr, **only when opened from `file://`** | see section 4 |
+| Other outbound requests | OCR engine + language models from jsDelivr, **only when opened from `file://` and only if the user switches OCR on** | see section 4 |
 | Server-side component | None | The tool is a single HTML file |
 | Telemetry or analytics | None | as above |
 | Credentials or secrets handled | None | no auth of any kind |
@@ -152,7 +152,18 @@ Recommendation: prefer Option A unless the corporate network blocks the CDN. If 
 B is unavoidable, confine it to a dedicated browser profile and shortcut used only for
 this tool.
 
-**Option A is now implemented** (`cheminsOCR()`): `file://` falls back to the CDN,
+**OCR is off by default and switched on by the user** (`ocrAutorise`, top-left control).
+This is the primary control over the trade-off below: with OCR off, Tesseract is never
+constructed and no request of any kind is made -- verified by asserting
+`ocrWorker === null` after converting a document containing a scanned page. A reviewer
+can treat "OCR off" as equivalent to the air-gapped configuration.
+
+The trade-off is deliberately left with the person holding the document, because only
+they know its sensitivity. Note that the supply-chain exposure below applies **only** to
+the `file://` + OCR-on combination; served over HTTP, OCR uses the pinned, hash-verified
+local assets and carries none of it.
+
+**Option A is implemented** (`cheminsOCR()`): `file://` falls back to the CDN,
 HTTP keeps using the bundled assets. Measured in all three states -- `file://` with the
 CDN reachable (OCR works), `file://` with `cdn.jsdelivr.net` blackholed (scanned pages
 skipped, **the rest of the document still converts**, actionable message logged), and
@@ -171,6 +182,7 @@ useful there.
 | 3 | Record SHA-256 manifest of vendored files | **Done** |
 | 4 | Upgrade PDF.js to >= 4.2.67 | **Blocked** -- ESM-only, incompatible with `file://` (see F-1) |
 | 5 | Deployment Option A (CDN fallback on `file://`) | **Done** -- Option B no longer required for OCR to work from the filesystem |
+| 5b | User-controlled OCR switch, default off | **Done** -- lets the operator keep everything local per document |
 | 6 | Isolate OCR failures per page so one bad page cannot discard a whole document | **Done** |
 | 7 | Review dependency versions on a schedule | Open |
 
@@ -193,4 +205,4 @@ bug report -- a description of the file type and structure is enough.
 
 ---
 
-*Updated by Claude - 11-Sep-2026, 09:12 EDT*
+*Updated by Claude - 11-Sep-2026, 10:26 EDT*
