@@ -23,10 +23,10 @@ distribution model is the point of the tool -- anyone can copy the folder and ru
 
 ## Architecture
 
-`2-TXT-v5.html` -- 1499 lines, three parts:
+`2-TXT-v5.html` -- 1586 lines, three parts:
 
 - **lines 1-266** -- `<head>` (script tags + all CSS) and `<body>` markup.
-- **lines 268-1496** -- the entire application script.
+- **lines 268-1583** -- the entire application script.
 - Everything is at top level in the global scope. No modules, no classes.
 
 ### Global state (lines 270-290)
@@ -37,6 +37,7 @@ distribution model is the point of the tool -- anyone can copy the folder and ru
 | `entreesSource` | `{fichier, chemin, supporte, retenu, caseCocher}[]` -- one per file in the picked folder |
 | `resultatsConversion` | `{nom, chemin, texte, feuilles?}[]` after extraction, sorted largest-first |
 | `ocrWorker`, `ocrInitialise` | Lazily created Tesseract worker; terminated after each analysis run |
+| `ocrIndisponible` | Latches when OCR init fails, so a 40-page scan does not retry 40 times; reset per run |
 
 `resultatsConversion` and the DOM table rows are **index-aligned** -- row `i` maps to
 `resultatsConversion[i]`. `mettreAJourResume()`, `rafraichirTailles()` and the generate
@@ -45,7 +46,7 @@ handler all rely on this. Do not sort or filter one without the other.
 **Entries do not all carry finished text.** A spreadsheet entry has `feuilles` (its
 parsed rows), a presentation entry has `presentation` (its parsed slides), and both
 leave `texte` empty; everything else carries `texte` alone.
-Never read `.texte` directly -- go through `texteDe(entry)` (line 557), which renders
+Never read `.texte` directly -- go through `texteDe(entry)` (line 576), which renders
 spreadsheets on demand from the current format and cleanup settings and memoises the
 result on the entry itself (`cacheCle` / `cacheTexte` / `cacheRetirees`). `tailleDe()`
 is the same thing for character counts. This is what keeps the export honest when the
@@ -55,18 +56,18 @@ user changes a control after analysing -- see known issue 2.
 
 | Lines | Section | Key symbols |
 |---|---|---|
-| 310-506 | i18n | `T` (fr/en string table), `t()`, `tn()`, `appliquerLangue()` |
-| 509-554 | Utilities | `log()`, `extensionDe()`, `nomSimple()`, `nettoyerTexte()`, `echapperMarkdown()`, `estFichierGenere()` |
-| 557-623 | Rendering state | `texteDe()`, `tailleDe()`, `mettreAJourResume()`, `rafraichirTailles()` |
-| 626-701 | Source selection | `entreesRetenues()`, `majCompteSelection()`, `rendreListeSource()`, `basculerSelection.onclick` |
-| 704-811 | PDF + OCR | `initialiserOCR()`, `augmenterContraste()`, `extraireTextePDF()` |
-| 814-850 | DOCX | `extraireTexteDOCX()` |
-| 857-1012 | PPTX | `extraireStructurePPTX()`, `structurePPTXVersTexte()` |
-| 1015-1206 | Excel | `motifsBruitExcel`, `estLigneBruitExcel()`, `valeurCelluleExcel()`, `lignesBrutesFeuille()`, `preparerLignes()`, `feuilleVersMarkdown()`, `analyserClasseur()`, `classeurVersTexte()` |
-| 1209-1258 | Dispatch | `extraireFichier(fichier)` -- extension switch |
-| 1261-1299 | Folder selection | `boutonChoisir.onclick`, `inputRepertoire` change handler |
-| 1302-1383 | Analysis run | `boutonAnalyser.onclick` -- the main loop |
-| 1386-1494 | Export | `boutonGenerer.onclick` -- builds and downloads the corpus |
+| 317-525 | i18n | `T` (fr/en string table), `t()`, `tn()`, `appliquerLangue()` |
+| 528-573 | Utilities | `log()`, `extensionDe()`, `nomSimple()`, `nettoyerTexte()`, `echapperMarkdown()`, `estFichierGenere()` |
+| 576-642 | Rendering state | `texteDe()`, `tailleDe()`, `mettreAJourResume()`, `rafraichirTailles()` |
+| 645-733 | Source selection | `entreesRetenues()`, `majCompteSelection()`, `rendreListeSource()`, `basculerSelection.onclick` |
+| 736-893 | PDF + OCR | `cheminsOCR()`, `initialiserOCR()`, `augmenterContraste()`, `extraireTextePDF()` |
+| 896-936 | DOCX | `extraireTexteDOCX()` |
+| 939-1094 | PPTX | `extraireStructurePPTX()`, `structurePPTXVersTexte()` |
+| 1097-1288 | Excel | `motifsBruitExcel`, `estLigneBruitExcel()`, `valeurCelluleExcel()`, `lignesBrutesFeuille()`, `preparerLignes()`, `feuilleVersMarkdown()`, `analyserClasseur()`, `classeurVersTexte()` |
+| 1291-1340 | Dispatch | `extraireFichier(fichier)` -- extension switch |
+| 1343-1381 | Folder selection | `boutonChoisir.onclick`, `inputRepertoire` change handler |
+| 1384-1470 | Analysis run | `boutonAnalyser.onclick` -- the main loop |
+| 1473-1581 | Export | `boutonGenerer.onclick` -- builds and downloads the corpus |
 
 ### Data flow
 
@@ -85,7 +86,7 @@ folder picker -> fichiersSelectionnes (File[])
 - **The codebase is written in French.** Identifiers, comments, and log messages are
   all French (`fichier`, `texte`, `lignes`, `nettoyer`, `extraire...`). Keep new code
   in the same language -- mixing French and English identifiers would make it worse.
-- **Every user-visible string goes in `T` (line 310), never inline** -- and that
+- **Every user-visible string goes in `T` (line 317), never inline** -- and that
   includes strings written *into the generated corpus*, not just the UI. Both `fr` and
   `en` keys must be added together, then wired through `appliquerLangue()` if the
   string lands in static markup.
@@ -107,18 +108,18 @@ folder picker -> fichiersSelectionnes (File[])
 
 ## Per-format extraction notes
 
-**PDF** (`extraireTextePDF`, line 755)
+**PDF** (`extraireTextePDF`, line 813)
 Per page: pull the text layer; if it yields **fewer than 20 characters**, treat the
 page as scanned and OCR it. Text items are joined with `" "`, so intra-page line
 breaks are lost. OCR renders at scale `1.7` and binarises at grey threshold `165`
 (`augmenterContraste`). Both constants are hardcoded magic numbers.
 
-**DOCX** (`extraireTexteDOCX`, line 814)
+**DOCX** (`extraireTexteDOCX`, line 896)
 Reads only `word/document.xml`. Walks the DOM for `w:t` / `w:tab` / `w:br` / `w:cr`
 and appends `\n` after each `w:p`. Consequence: **tables are flattened** -- cell
 boundaries vanish. Headers, footers, footnotes, endnotes, and comments are not read.
 
-**PPTX** (line 857 onwards) -- **parsed once, rendered on demand**, same split as Excel.
+**PPTX** (line 939 onwards) -- **parsed once, rendered on demand**, same split as Excel.
 
 `extraireStructurePPTX()` collects all `a:t` nodes per `ppt/slides/slideN.xml` plus the
 matching `ppt/notesSlides/notesSlideN.xml`, returning
@@ -131,7 +132,7 @@ The slide-to-notes mapping assumes index parity (`slideN` <-> `notesSlideN`), wh
 holds for simple decks but is **not guaranteed** by OOXML -- the correct way is to
 follow the relationship files in `ppt/slides/_rels/`.
 
-**Excel** (line 1015 onwards) -- **parsed once, rendered on demand.**
+**Excel** (line 1097 onwards) -- **parsed once, rendered on demand.**
 
 *Parse phase*, during analysis: `analyserClasseur()` reads the workbook and returns
 `[{nom, lignesBrutes}]` per sheet. `lignesBrutesFeuille()` walks the declared `!ref`
@@ -157,7 +158,7 @@ expanded. Charts, images, and comments are ignored.
 ## Known issues / gotchas
 
 1. **OCR is fully offline, and that constrains the OEM setting.** `initialiserOCR()`
-   (line 704) passes `workerPath`, `corePath:"."` and `langPath:"."`, so every OCR
+   (line 736) passes `workerPath`, `corePath:"."` and `langPath:"."`, so every OCR
    asset is served from the project folder and nothing touches the jsDelivr CDN.
    `corePath` is a **directory**, so Tesseract picks the build itself: with OEM `1`
    (`LSTM_ONLY`, passed to `createWorker`) it resolves `lstmOnly=true` and requests
@@ -181,27 +182,39 @@ expanded. Charts, images, and comments are ignored.
    into that key too, and the language toggle must keep calling `rafraichirTailles()`
    so the displayed sizes follow.
 
-3. **`file://` breaks OCR only -- not the whole tool.** PDF.js loses its worker and
-   silently falls back to the main thread, so PDFs still parse. Tesseract has no such
-   fallback: a worker on a `file://` page has an opaque (`null`) origin and may not read
-   local files, so the bundled OCR assets are unreachable and OCR throws. Measured, not
-   assumed -- see `SECURITY.md` section 4. Serving over HTTP fixes it; so does Chrome's
-   `--allow-file-access-from-files`, at a cost documented there.
+3. **`file://` cannot reach the bundled OCR assets -- handled, do not "simplify".**
+   A worker on a `file://` page has an opaque (`null`) origin and may not read local
+   files, so `workerPath` / `corePath` / `langPath` are unreachable there whatever value
+   they are given. A cross-origin `https` script *is* loadable from a null origin, so
+   `cheminsOCR()` (line 736) returns `{}` on `file://`, letting Tesseract fall back to
+   its own jsDelivr defaults. Served over HTTP it returns local paths and stays fully
+   offline. Both branches are measured, not assumed -- see `SECURITY.md` section 4.
+
+   PDF.js is unaffected: it loses its worker too but silently falls back to the main
+   thread, which is why PDFs still parse from `file://`.
 
    **Do not "upgrade PDF.js to fix CVE-2024-4367".** 4.x and later ship ES modules
    only, and module scripts are CORS-fetched, which `file://` cannot satisfy -- the
    upgrade would break the tool's primary deployment. The vulnerable path is disabled
-   via `isEvalSupported:false` instead (`extraireTextePDF`, line 755). See `SECURITY.md`
+   via `isEvalSupported:false` instead (`extraireTextePDF`, line 813). See `SECURITY.md`
    finding F-1 before touching either.
 
-4. **Everything runs on the main thread, serially.** A large folder freezes the UI.
+4. **OCR failure is per page, never per document.** `initialiserOCR()` (line 763)
+   returns a boolean and never throws; the OCR block in `extraireTextePDF()` is wrapped
+   so an unreadable page increments `ignorees` and moves on. This is load-bearing: the
+   original code let one failed page discard every page already extracted, which cost a
+   user a 36-page deck because page 36 needed OCR. `ocrIndisponible` latches after the
+   first initialisation failure so a 40-page scan does not retry 40 times, and resets at
+   the start of each analysis run so changed connectivity is retried.
+
+5. **Everything runs on the main thread, serially.** A large folder freezes the UI.
    There is no cancel button and no way to resume a partial run.
 
-5. **The whole corpus is held in memory** as one JavaScript string before the Blob is
+6. **The whole corpus is held in memory** as one JavaScript string before the Blob is
    created. Very large folders can exhaust the tab.
 
-6. **There are two selection stages, and they are not redundant.** The folder listing
-   (`rendreListeSource()`, line 651) ticks files *before* conversion, so unwanted files
+7. **There are two selection stages, and they are not redundant.** The folder listing
+   (`rendreListeSource()`, line 670) ticks files *before* conversion, so unwanted files
    never cost an OCR pass. The results table then drops files *after* conversion, once
    their character counts are visible. Removing either one loses a real capability.
    `webkitdirectory` still takes a whole folder -- individual files cannot be picked
@@ -211,13 +224,13 @@ expanded. Charts, images, and comments are ignored.
    rebuilds the list on every language change, and fresh checkboxes would default back
    to ticked and silently discard the user's choice.
 
-7. **The `estFichierGenere()` guard** (line 538) is name-based only and matches any
+8. **The `estFichierGenere()` guard** (line 557) is name-based only and matches any
    filename containing `documents_concat` or `corpus_concat`.
 
-8. **The version number lives only in the filename** (`2-TXT-v5.html`). There is no
+9. **The version number lives only in the filename** (`2-TXT-v5.html`). There is no
    version constant in the code and no changelog.
 
-9. **The page is deliberately light-only.** `:root` sets `color-scheme:light` and an
+10. **The page is deliberately light-only.** `:root` sets `color-scheme:light` and an
    explicit white background, and `body` repeats the background. This is load-bearing:
    the rest of the stylesheet assumes a light ground (`#f7f7f7` zones, white cells,
    `#ddd` borders), so removing either declaration makes the page unreadable against a
@@ -225,7 +238,7 @@ expanded. Charts, images, and comments are ignored.
    custom properties and redefining them under `prefers-color-scheme`, which is a
    design decision, not a bug fix.
 
-10. **The Excel noise filter is Markdown-only, by design.** `classeurVersTexte()`
+11. **The Excel noise filter is Markdown-only, by design.** `classeurVersTexte()`
     computes `nettoyageActif=(format==="md") && nettoyer`, matching the checkbox
     label ("... lors de la génération Markdown"). Toggling the checkbox now takes
     effect immediately in Markdown mode -- previously it was read once during analysis
@@ -243,7 +256,6 @@ Ideas that fit the tool's shape, roughly in order of value:
 - Extra formats: `.doc`, `.rtf`, `.csv`, `.html`, `.epub`.
 - Preserve DOCX table structure as Markdown tables.
 - Follow `ppt/slides/_rels/` for correct slide-to-notes mapping.
-- A cancel button and per-file progress rather than a single OCR bar.
 - Configurable OCR languages instead of the hardcoded `fra+eng`.
 
 ---

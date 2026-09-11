@@ -16,14 +16,17 @@ server, no account, and no upload.
 
 | Property | Status | How it was checked |
 |---|---|---|
-| Outbound network calls in application code | **None** | grep for `fetch` / `XMLHttpRequest` / `http(s)://` / `sendBeacon` / `WebSocket` -- zero hits |
+| Outbound network calls carrying document data | **None** | no `fetch` / `XHR` / `sendBeacon` / `WebSocket` anywhere in the app |
+| Other outbound requests | OCR engine + language models from jsDelivr, **only when opened from `file://`** | see section 4 |
 | Server-side component | None | The tool is a single HTML file |
 | Telemetry or analytics | None | as above |
 | Credentials or secrets handled | None | no auth of any kind |
 | Persistent storage | Tesseract caches **OCR language models** in IndexedDB | document content is never written to storage |
 
-Document content never leaves the machine. The tool is usable on an air-gapped host
-when served over HTTP.
+Document content never leaves the machine in either configuration. Served over HTTP the
+tool makes no network requests at all and runs on an air-gapped host; opened from
+`file://` it downloads the OCR *software* (never any document) because the bundled
+copies are unreachable from a null-origin worker.
 
 This matters for a risk comparison: the realistic alternative to a tool like this is
 staff pasting confidential documents into a free online converter. That is strictly
@@ -149,6 +152,14 @@ Recommendation: prefer Option A unless the corporate network blocks the CDN. If 
 B is unavoidable, confine it to a dedicated browser profile and shortcut used only for
 this tool.
 
+**Option A is now implemented** (`cheminsOCR()`): `file://` falls back to the CDN,
+HTTP keeps using the bundled assets. Measured in all three states -- `file://` with the
+CDN reachable (OCR works), `file://` with `cdn.jsdelivr.net` blackholed (scanned pages
+skipped, **the rest of the document still converts**, actionable message logged), and
+HTTP with the CDN blackholed (OCR works entirely from local assets). Option B remains
+available for offline OCR from `file://` and is **not** required for the tool to be
+useful there.
+
 ---
 
 ## 5. Action plan
@@ -159,8 +170,8 @@ this tool.
 | 2 | Upgrade SheetJS to a fixed release (0.20.3) | **Done** |
 | 3 | Record SHA-256 manifest of vendored files | **Done** |
 | 4 | Upgrade PDF.js to >= 4.2.67 | **Blocked** -- ESM-only, incompatible with `file://` (see F-1) |
-| 5 | Decide between deployment Option A and Option B | Open -- pending a check of whether `cdn.jsdelivr.net` is reachable from the target network |
-| 6 | Isolate OCR failures per page so one bad page cannot discard a whole document | Open -- tracked in issue #10 |
+| 5 | Deployment Option A (CDN fallback on `file://`) | **Done** -- Option B no longer required for OCR to work from the filesystem |
+| 6 | Isolate OCR failures per page so one bad page cannot discard a whole document | **Done** |
 | 7 | Review dependency versions on a schedule | Open |
 
 ---
@@ -182,4 +193,4 @@ bug report -- a description of the file type and structure is enough.
 
 ---
 
-*Updated by Claude - 10-Sep-2026, 19:48 EDT*
+*Updated by Claude - 11-Sep-2026, 09:12 EDT*

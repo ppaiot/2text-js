@@ -303,6 +303,13 @@ let resultatsConversion=[];
 let ocrWorker=null;
 let ocrInitialise=false;
 
+/*
+  Passe à vrai lorsque l'initialisation de l'OCR a échoué, pour ne pas la
+  retenter à chaque page d'un document de quarante pages numérisées.
+  Réinitialisé au début de chaque analyse.
+*/
+let ocrIndisponible=false;
+
 /* -----------------------------------------------------------
    LANGUE
 ----------------------------------------------------------- */
@@ -367,7 +374,13 @@ fr:{
   feuilleTitre:"Feuille",
   feuilleMarqueur:"FEUILLE",
   ligneListe:"Ligne {n}",
-  colonne:"Colonne {n}"
+  colonne:"Colonne {n}",
+
+  ocrDepuisCDN:"Page ouverte en file:// : ressources OCR chargées depuis Internet (CDN jsDelivr).",
+  ocrIndisponible:"OCR indisponible. Les pages numérisées seront ignorées, le reste du document est conservé.",
+  ocrConseil:"Ouvert en file:// sans accès au CDN : servez le dossier en HTTP pour un OCR hors ligne (voir README).",
+  ocrPageIgnoree:"Page ignorée, échec OCR : ",
+  ocrBilanIgnorees:"Pages non reconnues : "
 },
 en:{
   titre:"Document Converter to Markdown or Text",
@@ -428,7 +441,13 @@ en:{
   feuilleTitre:"Sheet",
   feuilleMarqueur:"SHEET",
   ligneListe:"Row {n}",
-  colonne:"Column {n}"
+  colonne:"Column {n}",
+
+  ocrDepuisCDN:"Opened from file:// : OCR resources loaded from the internet (jsDelivr CDN).",
+  ocrIndisponible:"OCR unavailable. Scanned pages will be skipped, the rest of the document is kept.",
+  ocrConseil:"Opened from file:// with no access to the CDN: serve the folder over HTTP for offline OCR (see README).",
+  ocrPageIgnoree:"Page skipped, OCR failed: ",
+  ocrBilanIgnorees:"Pages not recognised: "
 }
 };
 
@@ -701,39 +720,78 @@ basculerSelection.onclick=function(){
    OCR / PDF
 ----------------------------------------------------------- */
 
-async function initialiserOCR(){
+/*
+  Tesseract exécute la reconnaissance dans un Web Worker. Sur une page
+  file://, ce worker reçoit une origine opaque (null) et n'a pas le droit
+  de lire des fichiers locaux : les ressources OCR livrées avec l'outil
+  sont alors inatteignables, quel que soit le chemin fourni.
 
-  if(ocrInitialise) return;
+  Un script https reste chargeable depuis une origine nulle. Dans ce cas
+  seulement, on laisse donc Tesseract retomber sur ses valeurs par défaut,
+  c'est-à-dire le CDN jsDelivr, ce qui exige un accès à Internet.
 
-  log(t("ocr"));
+  Servi en HTTP, l'outil utilise les ressources locales et reste
+  entièrement hors ligne.
+*/
+function cheminsOCR(){
+
+  if(location.protocol==="file:"){
+    log(t("ocrDepuisCDN"));
+    return {};
+  }
 
   /*
-    Chemins locaux : le script worker, le cœur WebAssembly et les modèles
-    linguistiques sont livrés avec l'outil. Sans ces trois options,
-    Tesseract.js télécharge tout depuis le CDN jsDelivr et l'OCR exige
-    alors une connexion Internet.
-
     corePath désigne un répertoire, pas un fichier : Tesseract choisit
     lui-même tesseract-core-simd-lstm.wasm.js si le navigateur supporte
     SIMD, sinon tesseract-core-lstm.wasm.js. Les variantes « lstm »
-    correspondent au mode OEM 1 demandé ci-dessus.
+    correspondent au mode OEM 1 demandé ci-dessous.
 
     langPath pointe vers le dossier contenant fra.traineddata.gz
     et eng.traineddata.gz.
   */
-  ocrWorker=await Tesseract.createWorker("fra+eng",1,{
+  return {
     workerPath:"tesseract.worker.min.js",
     corePath:".",
-    langPath:".",
-    logger:m=>{
-      if(m.status==="recognizing text"){
-        progressOCR.value=Math.round((m.progress||0)*100);
-      }
+    langPath:"."
+  };
+}
+
+/*
+  Renvoie vrai si l'OCR est utilisable. N'émet jamais d'exception : un
+  échec d'initialisation ne doit pas faire perdre les pages déjà lues.
+*/
+async function initialiserOCR(){
+
+  if(ocrInitialise) return true;
+  if(ocrIndisponible) return false;
+
+  log(t("ocr"));
+
+  const options=cheminsOCR();
+
+  options.logger=m=>{
+    if(m.status==="recognizing text"){
+      progressOCR.value=Math.round((m.progress||0)*100);
     }
-  });
+  };
+
+  try{
+    ocrWorker=await Tesseract.createWorker("fra+eng",1,options);
+  }catch(erreur){
+    ocrIndisponible=true;
+    log(t("ocrIndisponible"));
+
+    if(location.protocol==="file:"){
+      log(t("ocrConseil"));
+    }
+
+    log(String(erreur));
+    return false;
+  }
 
   ocrInitialise=true;
   log(t("ocrPret"));
+  return true;
 }
 
 function augmenterContraste(canvas){
@@ -768,6 +826,7 @@ async function extraireTextePDF(fichier){
     isEvalSupported:false
   }).promise;
   let texte="";
+  let ignorees=0;
 
   for(let pageNo=1;pageNo<=pdf.numPages;pageNo++){
 
@@ -782,28 +841,51 @@ async function extraireTextePDF(fichier){
 
     log(t("pdfOCR")+fichier.name+" — page "+pageNo);
 
-    await initialiserOCR();
+    /*
+      Une page illisible ne doit jamais coûter le document entier : les
+      pages déjà extraites sont conservées et l'on passe à la suivante.
+    */
+    if(!await initialiserOCR()){
+      ignorees++;
+      continue;
+    }
 
-    const viewport=page.getViewport({scale:1.7});
-    const canvas=document.createElement("canvas");
-    canvas.width=viewport.width;
-    canvas.height=viewport.height;
+    let canvas=null;
 
-    await page.render({
-      canvasContext:canvas.getContext("2d"),
-      viewport:viewport
-    }).promise;
+    try{
+      const viewport=page.getViewport({scale:1.7});
+      canvas=document.createElement("canvas");
+      canvas.width=viewport.width;
+      canvas.height=viewport.height;
 
-    augmenterContraste(canvas);
+      await page.render({
+        canvasContext:canvas.getContext("2d"),
+        viewport:viewport
+      }).promise;
 
-    const resultat=await ocrWorker.recognize(canvas);
-    texte+=(resultat.data.text||"")+"\n\n";
+      augmenterContraste(canvas);
 
-    canvas.width=0;
-    canvas.height=0;
+      const resultat=await ocrWorker.recognize(canvas);
+      texte+=(resultat.data.text||"")+"\n\n";
+
+    }catch(erreur){
+      ignorees++;
+      log(t("ocrPageIgnoree")+pageNo);
+
+    }finally{
+      if(canvas){
+        canvas.width=0;
+        canvas.height=0;
+      }
+    }
   }
 
   progressOCR.value=0;
+
+  if(ignorees>0){
+    log(t("ocrBilanIgnorees")+ignorees+" / "+pdf.numPages+" ("+fichier.name+")");
+  }
+
   return nettoyerTexte(texte);
 }
 
@@ -1307,6 +1389,9 @@ boutonAnalyser.onclick=async function(){
   // Seuls les fichiers cochés sont convertis.
   const entrees=entreesRetenues();
 
+  // Une nouvelle analyse retente l'OCR : la connectivité a pu changer.
+  ocrIndisponible=false;
+
   resultatsConversion=[];
   tableBody.innerHTML="";
 
@@ -1342,6 +1427,8 @@ boutonAnalyser.onclick=async function(){
     ocrWorker=null;
     ocrInitialise=false;
   }
+
+  ocrIndisponible=false;
 
   resultatsConversion.sort((a,b)=>tailleDe(b)-tailleDe(a));
 
