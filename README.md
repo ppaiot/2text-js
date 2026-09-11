@@ -40,8 +40,11 @@ re-run in place without feeding the output back into itself.
   and sheet markers all follow the chosen language. The `.txt` envelope keys
   (`DATASET_TYPE`, `FILE_NAME`, ...) stay fixed, since they are there for machines
   to parse.
-- **OCR for scanned PDFs** -- Tesseract.js with the `fra+eng` models. Pages are
-  rendered at 1.7x, binarised, then recognised. A progress bar tracks it.
+- **OCR for scanned PDFs, off by default** -- a switch in the top-left corner turns it
+  on. Tesseract.js with the `fra+eng` models; pages are rendered at 1.7x, binarised,
+  then recognised. With the switch off, scanned pages are skipped and the rest of every
+  document still converts -- and Tesseract is never loaded, so nothing is fetched. See
+  [Privacy](#privacy) for why the default is off.
 - **Excel noise filter** (optional, on by default, Markdown output only) -- drops rows
   that are obviously administrative rather than data: legends, instructions,
   translations, version history, "confidential", "please read", "click here", and
@@ -53,9 +56,9 @@ re-run in place without feeding the output back into itself.
 
 ## Running it
 
-**The simple way: double-click `2-TXT-v5.html`.** Every format works, and scanned PDFs
-are OCR'd by fetching the OCR engine from a CDN -- so that one feature needs an internet
-connection. Nothing else does, and no document content is ever sent anywhere.
+**The simple way: double-click `2-TXT-v5.html`.** Every format works. OCR is off by
+default; switching it on fetches the OCR engine from a CDN, so that one feature needs an
+internet connection. Nothing else does, and no document content is ever sent anywhere.
 
 **The offline way: serve the folder over HTTP.** OCR then uses the bundled engine and
 models, and the tool makes no network requests at all. From the project folder:
@@ -86,11 +89,17 @@ anywhere.**
 WebAssembly core and the French and English language models are bundled here, so even
 scanned PDFs are recognised offline. That configuration runs on an air-gapped machine.
 
-**Opened directly from disk (`file://`), OCR alone needs the internet.** Tesseract runs
-recognition in a Web Worker, and a worker on a `file://` page gets an opaque origin that
-browsers forbid from reading local files -- so the bundled OCR assets are unreachable no
-matter what path they are given. The tool detects this and loads *only* the OCR engine
-and language models from the jsDelivr CDN instead.
+**Opened directly from disk (`file://`), OCR alone needs the internet** -- which is why
+it is off until you ask for it. Tesseract runs recognition in a Web Worker, and a worker
+on a `file://` page gets an opaque origin that browsers forbid from reading local files,
+so the bundled OCR assets are unreachable no matter what path they are given. With the
+switch on, the tool loads *only* the OCR engine and language models from the jsDelivr
+CDN instead.
+
+**With the switch off, Tesseract is never loaded at all** -- no worker, no request. If a
+document might be sensitive, leave OCR off and everything stays on your machine; you
+still get every text-layer page and every DOCX, PPTX, XLSX, TXT and MD file, and scanned
+pages are simply reported as skipped.
 
 Either way, **no document content is ever transmitted.** The only thing fetched is the
 OCR software. Everything else -- PDF text layers, DOCX, PPTX, XLSX, TXT, MD -- works
@@ -183,4 +192,4 @@ MIT -- see [LICENSE](LICENSE).
 
 ---
 
-*Updated by Claude - 11-Sep-2026, 09:12 EDT*
+*Updated by Claude - 11-Sep-2026, 10:26 EDT*
